@@ -57,7 +57,7 @@ svg{display:block}
 .swatch{width:26px;height:26px;border-radius:50%;border:3px solid var(--panel);box-shadow:0 0 0 1px var(--line);cursor:pointer;padding:0}
 .swatch[aria-pressed="true"]{box-shadow:0 0 0 2px var(--accent)}
 #inks{gap:6px;padding:4px 6px}
-#inks[hidden]{display:none}
+#inks[hidden],#penModes[hidden]{display:none}
 
 /* layout */
 main{display:grid;grid-template-columns:224px minmax(0,1fr);min-height:0}
@@ -189,7 +189,10 @@ body.embed .brand,body.embed #helpBtn{display:none}
     <button class="btn" data-tool="pen" title="Pen (P)"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M13.2 3.6l3.2 3.2L7.2 16H4v-3.2z"/><path d="M11.4 5.4l3.2 3.2"/></svg><span class="lbl">Pen</span></button>
     <button class="btn" data-tool="eraser" title="Erase drawings (E)"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M8.5 16.5h8"/><path d="M3.6 12.2l7.6-7.6 5 5-6.9 6.9H7.9z"/><path d="M7.4 8.4l5 5"/></svg><span class="lbl">Eraser</span></button>
     <button class="btn" data-tool="text" title="Text (T)"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 5.5V4h12v1.5M10 4v12M7.5 16h5"/></svg><span class="lbl">Text</span></button>
-    <button class="btn" data-tool="hop" title="Hop: drag along a number line to draw a hop (H)"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 16.5h15"/><path d="M4.5 14C5 7.5 8 5 10.5 5s5.2 2.5 5.5 8"/><path d="M13.6 11.4l2.4 2.4 1.8-2.9"/></svg><span class="lbl">Hop</span></button>
+  </div>
+  <div class="grp" id="penModes" hidden role="group" aria-label="Pen line">
+    <button class="btn on" data-pen="free" title="Freehand" aria-pressed="true"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 14c2-6 4-7 5.5-4s3 5 4.5 1 2.5-5 4-3"/></svg><span class="lbl">Freehand</span></button>
+    <button class="btn" data-pen="line" title="Straight line (or hold Shift while drawing)" aria-pressed="false"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 16L16 4"/></svg><span class="lbl">Line</span></button>
   </div>
   <div class="grp" id="inks" hidden aria-label="Pen colour"></div>
   <div class="grp">
@@ -308,6 +311,39 @@ const SH = {
   thin: {n:'Thin rhombus', c:'#E8D5A8', p:[[51.96,0],[111.96,0],[60,30],[0,30]]}
 };
 for (const s of Object.values(SH)) s.bb = { w:Math.max(...s.p.map(q=>q[0])), h:Math.max(...s.p.map(q=>q[1])) };
+
+/* isometric dot grid: dots 30 apart in rows 25.98 apart, every other row shifted 15 (same as the "iso" pattern).
+   Pattern block sides are 60 = two dot gaps, so their corners can sit exactly on dots. */
+const ISO_W = 30, ISO_H = 15*Math.sqrt(3);
+const isoOn = () => S.bg === 'iso';
+function isoDot(x, y){
+  let best = null; const j0 = Math.round(y / ISO_H);
+  for (let j = j0 - 1; j <= j0 + 1; j++){
+    const off = ((j % 2) + 2) % 2 ? ISO_W/2 : 0, i = Math.round((x - off) / ISO_W);
+    const dx = ISO_W*i + off, dy = j*ISO_H, d = Math.hypot(x - dx, y - dy);
+    if (!best || d < best[2]) best = [dx, dy, d];
+  }
+  return best;
+}
+// a pattern block's corners on the board, after its rotation
+function shVerts(it){
+  const s = SH[it.s], { w, h } = s.bb, a = (it.r || 0)*Math.PI/180, c = Math.cos(a), sn = Math.sin(a), cx = it.x + w/2, cy = it.y + h/2;
+  return s.p.map(([px, py]) => { const dx = px - w/2, dy = py - h/2; return [cx + dx*c - dy*sn, cy + dx*sn + dy*c]; });
+}
+// the shift that puts the corner nearest a dot exactly on that dot (one shift for all the pieces given)
+function isoShift(list){
+  let best = null;
+  for (const it of list){
+    if (it.k !== 'sh') continue;
+    for (const [x, y] of shVerts(it)){ const d = isoDot(x, y); if (!best || d[2] < best.d) best = { dx:d[0] - x, dy:d[1] - y, d:d[2] }; }
+  }
+  return best;
+}
+function isoSnap(list){
+  if (!isoOn()) return list;
+  const s = isoShift(list); if (!s) return list;
+  return list.map(i => ({ ...i, x:i.x + s.dx, y:i.y + s.dy }));
+}
 const PARTS = [1,2,3,4,5,6,8,10,12];
 /* Taptinita (from code/taptinita): base-10 figure (220 × 310 viewBox) drawn at 2×, and its four seeds.
    corn = ones, peas = tens, beans = hundreds, lupins = thousands, as in the app's default order. */
@@ -960,17 +996,26 @@ function doAction(a){
   const free = list.filter(i => !i.lock);
   if (a === 'rotL' || a === 'rotR'){
     const turn = free.filter(i => i.k !== 'tap');   // the Taptinita stays upright so its seeds stay in their pozos
-    const step = (turn.every(i => i.k === 'sh') ? 30 : 90) * (a === 'rotL' ? -1 : 1), norm = r => ((r % 360) + 360) % 360;
+    // pattern blocks turn 30° at a time, or 60° on the isometric dots (so their corners land on dots again)
+    const dir = a === 'rotL' ? -1 : 1, onlyShapes = turn.every(i => i.k === 'sh'), iso = isoOn() && turn.some(i => i.k === 'sh');
+    const step = (onlyShapes ? (iso ? 60 : 30) : 90) * dir, norm = r => ((r % 360) + 360) % 360;
+    const turnTo = i => iso && i.k === 'sh'
+      ? norm(dir > 0 ? Math.floor((i.r || 0)/60)*60 + 60 : Math.ceil((i.r || 0)/60)*60 - 60)   // next 60° mark
+      : norm((i.r || 0) + step);
+    let out;
     if (turn.length > 1){
       // several pieces (a group) turn together around their shared centre
       let l = 1e9, t = 1e9, r = -1e9, b = -1e9;
       turn.forEach(i => { const q = bbox(i); l = Math.min(l, q.l); t = Math.min(t, q.t); r = Math.max(r, q.r); b = Math.max(b, q.b); });
       const gx = (l + r)/2, gy = (t + b)/2, ang = step*Math.PI/180, cs = Math.cos(ang), sn = Math.sin(ang);
-      act(() => put(turn.map(i => {
+      out = turn.map(i => {
         const { w, h } = size(i), dx = i.x + w/2 - gx, dy = i.y + h/2 - gy;
-        return { ...i, x:Math.round((gx + dx*cs - dy*sn - w/2)*2)/2, y:Math.round((gy + dx*sn + dy*cs - h/2)*2)/2, r:norm((i.r || 0) + step) };
-      })));
-    } else act(() => put(turn.map(i => ({ ...i, r:norm((i.r || 0) + step) }))));
+        return { ...i, x:gx + dx*cs - dy*sn - w/2, y:gy + dx*sn + dy*cs - h/2, r:turnTo(i) };
+      });
+      if (!iso) out = out.map(i => ({ ...i, x:Math.round(i.x*2)/2, y:Math.round(i.y*2)/2 }));
+    } else out = turn.map(i => ({ ...i, r:turnTo(i) }));
+    out = isoSnap(out);   // back onto the dots (does nothing on other backgrounds)
+    act(() => put(out));
   } else if (a === 'flip'){
     act(() => put(free.filter(i => i.k === 'ctr' || AL[i.k]).map(i => { const n = { ...i }; if (n.neg) delete n.neg; else n.neg = true; return n; })));
   } else if (a === 'break') breakApart(free);
@@ -1144,7 +1189,7 @@ const opts = (arr, cur) => arr.map(([v,l]) => `<option value="${v}"${String(v) =
 
 function editItem(it){
   if (it.k === 'nl' && it.open){
-    openDlg(`<h2>Open number line</h2><p>Just the line and arrows: draw hops with the <b>Hop</b> tool, or mark it with the pen or text.</p>
+    openDlg(`<h2>Open number line</h2><p>Just the line and arrows: drag <b>+ hop</b> or <b>− hop</b> onto it from Number lines, or mark it with the pen or text.</p>
       <label for="nlW">Length</label><select id="nlW" name="w" autofocus>${opts([[800,'Short'],[1200,'Medium'],[1500,'Long']], it.w)}</select>
       <menu><button class="btn" value="cancel">Cancel</button><button class="btn primary" value="ok">Save</button></menu>`,
       (v, fd) => act(() => put([{ ...S.items[it.id] || it, w:+fd.get('w') }])));
@@ -1219,12 +1264,24 @@ function setTool(t){
   S.tool = t;
   document.querySelectorAll('[data-tool]').forEach(b => b.classList.toggle('on', b.dataset.tool === t));
   $('#inks').hidden = !(t === 'pen' || t === 'text');
+  $('#penModes').hidden = t !== 'pen';
   svg.classList.toggle('pen', t === 'pen'); svg.classList.toggle('eraser', t === 'eraser'); svg.classList.toggle('text', t === 'text');
   svg.classList.toggle('hop', t === 'hop');
   svg.classList.toggle('hand', t === 'hand');
   if (t !== 'select' && t !== 'hand'){ S.sel.clear(); dirty(); }
 }
 document.querySelectorAll('[data-tool]').forEach(b => b.addEventListener('click', () => setTool(b.dataset.tool)));
+// pen: freehand or straight line
+S.penLine = ls.get('mml-penline') === '1';
+function setPenMode(line){
+  S.penLine = line; ls.set('mml-penline', line ? '1' : '0');
+  document.querySelectorAll('[data-pen]').forEach(b => {
+    const on = (b.dataset.pen === 'line') === line;
+    b.classList.toggle('on', on); b.setAttribute('aria-pressed', on);
+  });
+}
+document.querySelectorAll('[data-pen]').forEach(b => b.addEventListener('click', () => setPenMode(b.dataset.pen === 'line')));
+setPenMode(S.penLine);
 
 /* ---------- pointer handling ---------- */
 function toB(e){
@@ -1493,7 +1550,18 @@ window.addEventListener('pointermove', e => {
   }
   const p = toB(e);
   if (D.mode === 'ink'){
-    const n = D.pts.length, x = Math.round(p.x), y = Math.round(p.y);
+    let x = Math.round(p.x), y = Math.round(p.y);
+    if (S.penLine || e.shiftKey){
+      // straight line from where the pen went down; in Line mode, Shift snaps the angle to 15° steps
+      const x0 = D.pts[0], y0 = D.pts[1];
+      if (S.penLine && e.shiftKey){
+        const len = Math.hypot(x - x0, y - y0), a = Math.round(Math.atan2(y - y0, x - x0) / (Math.PI/12)) * (Math.PI/12);
+        x = Math.round(x0 + len*Math.cos(a)); y = Math.round(y0 + len*Math.sin(a));
+      }
+      D.pts = [x0, y0, x, y]; liveInk.setAttribute('d', pathD(D.pts));
+      return;
+    }
+    const n = D.pts.length;
     if (Math.hypot(x - D.pts[n-2], y - D.pts[n-1]) >= 2){ D.pts.push(x, y); liveInk.setAttribute('d', pathD(D.pts)); }
   } else if (D.mode === 'erase') eraseAt(e);
   else if (D.mode === 'hop'){
@@ -1519,6 +1587,12 @@ window.addEventListener('pointermove', e => {
       for (const id of D.ids){ const it = S.items[id]; if (it && !MAT.has(it.k)) it.z = z++; }
     }
     [dx, dy] = magnet(dx, dy);
+    if (isoOn()){
+      // pattern blocks click onto the isometric dots as they move
+      const sh = isoShift(D.ids.map(id => S.items[id]).filter(i => i && i.k === 'sh')
+                             .map(i => ({ ...i, x:D.orig.get(i.id).x + dx, y:D.orig.get(i.id).y + dy })));
+      if (sh){ dx += sh.dx; dy += sh.dy; }
+    }
     for (const id of D.ids){ const it = S.items[id], o = D.orig.get(id); if (!it) continue; it.x = o.x + dx; it.y = o.y + dy; }
     tray.classList.toggle('drop', overTray(e));
     dirty(); sendLater(D.ids);
@@ -1574,7 +1648,7 @@ function endPointer(e){
   }
   if (d.mode === 'new'){
     // a click on a tray piece: place it near the middle of the board
-    const o = (cascade++ % 8) * 26, c = viewCenter(), it = make(tpl(d.pid), c.x - 80 + o, c.y - 50 + o);
+    const o = (cascade++ % 8) * 26, c = viewCenter(), it = isoSnap([make(tpl(d.pid), c.x - 80 + o, c.y - 50 + o)])[0];
     put([it]); S.sel = new Set([it.id]); commit(d.pre);
     return;
   }
@@ -1622,9 +1696,11 @@ function endPointer(e){
     const changed = [];
     for (const id of d.ids){
       const it = S.items[id]; if (!it) continue;
-      // the board has no edges, so pieces can go anywhere
-      it.x = Math.round(it.x * 2) / 2;
-      it.y = Math.round(it.y * 2) / 2;
+      // the board has no edges, so pieces can go anywhere (blocks snapped to dots keep their exact place)
+      if (!(isoOn() && d.ids.some(id => S.items[id] && S.items[id].k === 'sh'))){
+        it.x = Math.round(it.x * 2) / 2;
+        it.y = Math.round(it.y * 2) / 2;
+      }
       if (it.k === 'ctr') snapToFrame(it);
       if (SEED[it.k] && d.ids.length === 1) snapToTap(it);
       changed.push(it);
@@ -1651,9 +1727,9 @@ function machineAt(e){
   const it = g && S.items[g.dataset.id];
   return it && it.k === 'xd' ? it : null;
 }
+// hops only come from the side menu: a click on a hop tile explains how to use it
 function hopToolHint(){
-  setTool('hop');
-  toast('Hop tool: drag along a number line. Right = + hop above, left = − hop below.');
+  toast('Drag the hop onto a number line: + hops go right (above), − hops go left (below).');
 }
 
 function snapToFrame(c){
@@ -1702,7 +1778,7 @@ tray.addEventListener('click', e => {
   if (!t || e.detail !== 0) return;   // keyboard activation only; pointer clicks are handled above
   if (t.dataset.pid.startsWith('hop')){ hopToolHint(); return; }
   if (t.dataset.pid.startsWith('dot')){ toast('Drag the dot into a box of a dot machine.'); return; }
-  const pre = begin(), o = (cascade++ % 8) * 26, c = viewCenter(), it = make(tpl(t.dataset.pid), c.x - 80 + o, c.y - 50 + o);
+  const pre = begin(), o = (cascade++ % 8) * 26, c = viewCenter(), it = isoSnap([make(tpl(t.dataset.pid), c.x - 80 + o, c.y - 50 + o)])[0];
   put([it]); S.sel = new Set([it.id]); commit(pre);
 });
 bar.addEventListener('click', e => { const b = e.target.closest('[data-act]'); if (b) doAction(b.dataset.act); });
@@ -1728,7 +1804,6 @@ window.addEventListener('keydown', e => {
   else if (k === 'p') setTool('pen');
   else if (k === 'e') setTool('eraser');
   else if (k === 't') setTool('text');
-  else if (k === 'h') setTool('hop');
   else if (k.startsWith('arrow') && S.sel.size){
     e.preventDefault();
     const st = e.shiftKey ? 20 : 2, dx = k === 'arrowleft' ? -st : k === 'arrowright' ? st : 0, dy = k === 'arrowup' ? -st : k === 'arrowdown' ? st : 0;
@@ -1919,7 +1994,9 @@ $('#helpBtn').onclick = () => openDlg(`<h2>How to use Edutorium Live</h2><div cl
     <li><b>Flip:</b> double-click a counter or algebra tile to turn it over.</li>
     <li><b>Base ten:</b> select a ten, hundred or thousand and choose <b>Break into 10</b>. Select 10 of the same block and choose <b>Group 10</b>.</li>
     <li><b>Taptinita:</b> drop corn, peas, beans and lupins into the pozos or the red Killa and they settle in. Several seeds can share a pozo; they shrink to fit. Moving the Taptinita moves its seeds too. Select 10 of one seed and choose <b>Group 10</b> to trade up, or select a seed and choose <b>Break into 10</b>.</li>
-    <li><b>Hops:</b> drag a <b style="color:#2563eb">+ hop</b> or <b style="color:#dc2626">− hop</b> from <b>Number lines</b> onto a number line, type its value and press Enter (the + or − is added for you). Drag the arc to slide the hop along the line, the dot to move its start, or the arrowhead to move its end. Click a hop's label to change its value. Or choose <b>Hop</b> in the toolbar and drag along a number line. Drag right for a <b style="color:#2563eb">+</b> hop above the line, left for a <b style="color:#dc2626">−</b> hop below it. On Intervals, hops snap to the marks. Tap a hop to change its label or delete it; the eraser rubs hops out too.</li>
+    <li><b>Pen:</b> choose <b>Freehand</b> or <b>Line</b> next to the colours. Line draws a straight line from where you press to where you let go (Shift snaps it to 15° steps). In Freehand, hold Shift for a straight line.</li>
+    <li><b>Hops:</b> drag a <b style="color:#2563eb">+ hop</b> or <b style="color:#dc2626">− hop</b> from <b>Number lines</b> onto a number line, type its value and press Enter (the + or − is added for you). Drag the arc to slide the hop along the line, the dot to move its start, or the arrowhead to move its end. Click a hop's label to change its value or delete it (×). On Intervals, hops snap to the marks. The eraser rubs hops out too.</li>
+    <li><b>Isometric dots:</b> with this background, pattern blocks snap their corners onto the dots and rotate 60° at a time so they stay on the dots.</li>
     <li><b>Exploding Dots:</b> drag dots and anti-dots into the boxes of a dot machine. Drag a dot one box to the left to explode (10 dots become 1 on the left, or the machine's own rule), one box to the right to unexplode, or off the machine to remove it. A dashed orange box is ready to explode. Double-click the machine to change its boxes, its rule, or fill it with a number.</li>
     <li><b>Background:</b> choose blank, dots, a square grid, a coordinate grid or isometric dots.</li>
     <li><b>Save:</b> save a picture to hand in, or save a board file and open it again later.</li>
@@ -1930,7 +2007,7 @@ $('#helpBtn').onclick = () => openDlg(`<h2>How to use Edutorium Live</h2><div cl
     <li><b>Work together:</b> one person starts a shared board and gets a code. The partner types the code. Both see every move.</li>
     <li><b>In slides:</b> use <b>Board link</b> to save the board as a link, then add that link to your slide.</li>
   </ul>
-  <p>Keys: R rotate, F flip, Ctrl+D copy, Ctrl+Z undo, arrows nudge, V move, P pen, E eraser, T text, H hop.</p></div>
+  <p>Keys: R rotate, F flip, Ctrl+D copy, Ctrl+Z undo, arrows nudge, V move, P pen, E eraser, T text, hold Space to move around.</p></div>
   <menu><button class="btn primary" value="cancel">Got it</button></menu>`, null);
 
 /* ---------- toast ---------- */
