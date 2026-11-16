@@ -360,8 +360,11 @@ const SEED = {
    d[i] = [dots, anti-dots] in box i. Rule "1 ← base": base dots in a box explode into 1 dot in the box to the left. */
 const XD_PAD = 16, XD_BOX = 190, XD_GAP = 14, XD_HEAD = 36, XD_FOOT = 34, XD_MAX = 60;
 const DOT_FILL = '#f59e0b', DOT_EDGE = '#92400e';
+/* percent grids: base-ten-shaped grids whose squares can be shaded. f = "0"/"1" per square, row by row.
+   show = how the shaded amount is written: 'pct' (37%), 'frac' (37/100) or 'dec' (0.37). */
+const PG_C = 30, PG_P = 12, PG_RB = 52, PG_FILL = '#4F95DB', PG_SHOW = ['dec','pct','frac'];
 const MAT = new Set(['tf','nl','tap']);
-const KINDS = new Set(['b1','b10','b100','b1000','f','rod','a1','ax','ax2','ctr','tf','sh','nl','txt','ink','tap','corn','pea','bean','lupin','xd']);
+const KINDS = new Set(['b1','b10','b100','b1000','f','rod','a1','ax','ax2','ctr','tf','sh','nl','txt','ink','tap','corn','pea','bean','lupin','xd','pg']);
 
 function size(it){
   const k = it.k;
@@ -371,6 +374,7 @@ function size(it){
   switch (k) {
     case 'tap': return { w:220*TAP, h:310*TAP };
     case 'xd':  return { w:2*XD_PAD + it.n*XD_BOX + (it.n - 1)*XD_GAP, h:XD_HEAD + XD_BOX + XD_FOOT };
+    case 'pg':  return { w:Math.max(2*PG_P + it.cols*PG_C, 190), h:2*PG_P + it.rows*PG_C + PG_RB - PG_P };
     case 'f':   return { w:FW/it.n, h:FH };
     case 'rod': return { w:it.n*RU, h:RU };
     case 'ctr': return { w:44, h:44 };
@@ -416,6 +420,23 @@ function inner(it, L = S.labels){
            `<path d="M200 40L240 0V200L200 240Z" fill="${side}" stroke="${d}" stroke-width="1.4" stroke-linejoin="round"/>`+
            `<rect x="0" y="40" width="200" height="200" fill="${c}" stroke="${d}" stroke-width="1.4"/>`+
            `<path d="${segs(f)}${segs(t)}${segs(s)}" stroke="${d}" stroke-opacity=".4"/>` + btName(100, 152, '1,000', 34);
+  }
+  if (k === 'pg'){
+    const { w, h } = size(it), gx = pgX(it), gw = it.cols*PG_C, gh = it.rows*PG_C, f = it.f;
+    let s = `<rect x="1" y="1" width="${w - 2}" height="${h - 2}" rx="10" fill="#e8edf3" stroke="#64748b" stroke-width="2"/>`;
+    for (let r = 0; r < it.rows; r++) for (let c = 0; c < it.cols; c++){
+      const i = r*it.cols + c;
+      s += `<rect data-cell="${i}" x="${gx + c*PG_C}" y="${PG_P + r*PG_C}" width="${PG_C}" height="${PG_C}" fill="${f[i] === '1' ? PG_FILL : '#ffffff'}"/>`;
+    }
+    let gl = '';
+    for (let c = 0; c <= it.cols; c++) gl += `M${gx + c*PG_C} ${PG_P}V${PG_P + gh}`;
+    for (let r = 0; r <= it.rows; r++) gl += `M${gx} ${PG_P + r*PG_C}H${gx + gw}`;
+    s += `<path d="${gl}" stroke="#64748b" stroke-width="1.2" pointer-events="none"/>`;
+    // the value button: click it to switch between percent, fraction and decimal
+    const txt = pgText(it), bw = Math.min(w - 16, Math.max(130, [...txt].length*11.5 + 52)), bx = (w - bw)/2, by = PG_P + gh + 9;
+    return s + `<g data-pgbtn="1"><rect x="${bx}" y="${by}" width="${bw}" height="34" rx="17" fill="#ffffff" stroke="#3b82f6" stroke-width="2"/>`+
+      `<text x="${bx + (bw - 26)/2 + 2}" y="${by + 23}" font-size="18" font-weight="800" fill="#1e3a8a" text-anchor="middle">${esc(txt)}</text>`+
+      `<path d="M${bx + bw - 30} ${by + 13}h11l-3.5-3.5M${bx + bw - 19} ${by + 21}h-11l3.5 3.5" stroke="#3b82f6" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>`;
   }
   if (k === 'xd'){
     const { w, h } = size(it), n = it.n, B = it.base;
@@ -561,6 +582,47 @@ function editHop(it, i){
       act(() => put([{ ...cur, hops }]));
     });
 }
+/* ---------- percent grids ---------- */
+const pgX = it => (size(it).w - it.cols*PG_C) / 2;   // left edge of the squares (the frame can be wider than a strip)
+const pgCount = it => [...it.f].filter(c => c === '1').length;
+const trimNum = v => String(Math.round(v*1000)/1000);
+const isExact = v => Math.abs(v*1000 - Math.round(v*1000)) < 1e-9;
+function pgText(it){
+  const N = it.rows*it.cols, n = pgCount(it), v = n / N;
+  if (it.show === 'dec') return (isExact(v) ? '' : '≈') + trimNum(v);
+  if (it.show === 'frac'){
+    const g = gcd(n, N);
+    if (!n || g === 1) return `${n}/${N}`;
+    return N/g === 1 ? `${n}/${N} = ${n/g}` : `${n}/${N} = ${n/g}/${N/g}`;
+  }
+  const p = v*100, r = Math.round(p*100)/100;
+  return (Math.abs(p - r) < 1e-9 ? '' : '≈') + r + '%';
+}
+// shade (or unshade) one square while painting; sent to partners when the drag ends
+function pgPaint(i){
+  const it = S.items[D.id]; if (!it || it.f[i] === D.val) return;
+  S.items[D.id] = { ...it, f:it.f.slice(0, i) + D.val + it.f.slice(i + 1) };
+  dirty(); sendLater([D.id]);
+}
+// percent → fraction → decimal → percent …
+function pgCycle(id){
+  const it = S.items[id]; if (!it) return;
+  const next = { pct:'frac', frac:'dec', dec:'pct' }[it.show] || 'pct';
+  act(() => put([{ ...it, show:next }]));
+}
+function pgDialog(it){
+  openDlg(`<h2>Percent grid</h2><p>Choose its size. The shading is kept where it still fits.</p>
+    <div class="row"><div><label for="pgR">Rows</label><select id="pgR" name="rows">${opts([...Array(12)].map((_, i) => [i + 1, i + 1]), it.rows)}</select></div>
+    <div><label for="pgC">Columns</label><select id="pgC" name="cols">${opts([...Array(12)].map((_, i) => [i + 1, i + 1]), it.cols)}</select></div></div>
+    <menu><button class="btn primary" value="ok">Save</button><button class="btn" value="cancel">Cancel</button></menu>`,
+    (v, fd) => {
+      const cur = S.items[it.id] || it, rows = +fd.get('rows'), cols = +fd.get('cols');
+      let f = '';
+      for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) f += r < cur.rows && c < cur.cols ? cur.f[r*cur.cols + c] : '0';
+      act(() => put([{ ...cur, rows, cols, f }]));
+    });
+}
+
 /* ---------- exploding dots ---------- */
 const xdBoxX = (it, i) => XD_PAD + (it.n - 1 - i)*(XD_BOX + XD_GAP);
 // which box a board point is over: its number, -1 inside the machine but not in a box, null outside the machine
@@ -675,6 +737,11 @@ function clean(o){
                 it.min =Math.round(num(o.min,0,-1000,1000)); it.max = Math.round(num(o.max,10,it.min+1,it.min+240));
                 it.p = PARTS.includes(+o.p) ? +o.p : 1; it.w = num(o.w,1200,400,1560); break;
     case 'txt': it.text = String(o.text || '').slice(0,80); it.fs = [24,32,48,64].includes(+o.fs) ? +o.fs : 32; it.c = col(o.c); break;
+    case 'pg':
+      it.rows = Math.round(num(o.rows,10,1,12)); it.cols = Math.round(num(o.cols,10,1,12));
+      it.f = String(o.f || '').replace(/[^01]/g, '').slice(0, it.rows*it.cols).padEnd(it.rows*it.cols, '0');
+      it.show = PG_SHOW.includes(o.show) ? o.show : 'pct';
+      break;
     case 'xd':
       it.n = Math.round(num(o.n,3,2,6)); it.base = Math.round(num(o.base,10,2,10));
       it.d = [...Array(it.n)].map((_, i) => {
@@ -704,6 +771,8 @@ function tpl(pid){
   if (pid === 'tf') return { k:'tf' };
   if (pid === 'tap' || SEED[pid]) return { k:pid };
   if (pid === 'xd') return { k:'xd', n:3, base:10, d:[[0,0],[0,0],[0,0]] };
+  if (pid === 'pg100') return { k:'pg', rows:10, cols:10, f:'0'.repeat(100), show:'pct' };
+  if (pid === 'pg10') return { k:'pg', rows:10, cols:1, f:'0'.repeat(10), show:'pct' };
   if (pid.startsWith('sh-')) return { k:'sh', s:pid.slice(3) };
   if (pid === 'nl') return { k:'nl', min:0, max:10, p:1, w:1200 };
   if (pid === 'nlo') return { k:'nl', open:true, min:0, max:10, p:1, w:1200 };
@@ -712,6 +781,7 @@ function tpl(pid){
 
 const GROUPS = [
   { id:'base10', name:'Base ten blocks', tiles:[['b1','One'],['b10','Ten'],['b100','Hundred'],['b1000','Thousand']] },
+  { id:'percent', name:'Percent grids', tiles:[['pg100','Hundred grid'],['pg10','Ten strip']] },
   { id:'taptinita', name:'Taptinita', tiles:[['tap','Taptinita'],['corn','Corn'],['pea','Pea'],['bean','Bean'],['lupin','Lupin']] },
   { id:'fractions', name:'Fraction bars', wall:FW, tiles:FDEN.map(n => ['f'+n, n===1 ? 'One whole' : 'One ' + ({2:'half',3:'third',4:'fourth',5:'fifth',6:'sixth',8:'eighth',10:'tenth',12:'twelfth'})[n]]) },
   { id:'rods', name:'Number rods', wall:10*RU, tiles:[1,2,3,4,5,6,7,8,9,10].map(n => ['rod'+n, 'Rod ' + n]) },
@@ -923,6 +993,10 @@ function valueText(list){
     const n = ct.filter(i => i.neg).length, p = ct.length - n, v = p - n;
     parts.push(`Counters: ${p} positive, ${n} negative → ${v < 0 ? '−' + (-v) : v}`);
   }
+  for (const g of list.filter(i => i.k === 'pg')){
+    const N = g.rows*g.cols, n = pgCount(g), text = mode => pgText({ ...g, show:mode });
+    parts.push(`Shaded: ${n} of ${N} = ${text('pct')} = ${text('dec')} = ${text('frac')}`);
+  }
   for (const m of list.filter(i => i.k === 'xd')){
     // boxes from the left, e.g. "1 | 3 | 2 = 132"; an anti-dot counts as minus one
     const digits = m.d.slice().reverse().map(([p, n]) => String(p - n).replace('-','−')).join(' | ');
@@ -977,7 +1051,8 @@ function updateBar(){
   if (list.some(i => DOWN[i.k])) b.push(abtn('break','brk','Break into 10'));
   if (GROUPABLE.some(k => list.filter(i => i.k === k && !i.lock).length >= 10)) b.push(abtn('group','grp','Group 10'));
   if (hasZeroPair(list)) b.push(abtn('zero','zero','Remove zero pairs'));
-  if (list.length === 1 && ['nl','txt','xd'].includes(list[0].k)) b.push(abtn('edit','edit','Edit'));
+  if (list.length === 1 && ['nl','txt','xd','pg'].includes(list[0].k)) b.push(abtn('edit','edit','Edit'));
+  if (list.some(i => i.k === 'pg' && i.f.includes('1'))) b.push(abtn('pgclr','zero','Clear shading'));
   const grps = new Set(list.map(i => i.grp).filter(Boolean));
   if (list.length > 1 && !(grps.size === 1 && list.every(i => i.grp))) b.push(abtn('grp','grp2','Group'));
   if (grps.size) b.push(abtn('ungrp','ungrp','Ungroup'));
@@ -1032,6 +1107,8 @@ function doAction(a){
       if (n.grp) n.grp = newGrp[n.grp] || (newGrp[n.grp] = 'g' + rid()); n.id = newId(); n.x += 30; n.y += 30; n.z = MAT.has(n.k) ? zBottom() - 1 : z++; delete n.lock; return n; });
     act(() => put(copies));
     S.sel = new Set(copies.map(c => c.id)); dirty();
+  } else if (a === 'pgclr'){
+    act(() => put(free.filter(i => i.k === 'pg').map(i => ({ ...i, f:'0'.repeat(i.rows*i.cols) }))));
   } else if (a === 'grp'){
     if (list.length < 2){ toast('Select two or more pieces to group them.'); return; }
     const g = 'g' + rid();
@@ -1210,6 +1287,7 @@ function editItem(it){
       });
   } else if (it.k === 'txt') textDialog(it);
   else if (it.k === 'xd') xdDialog(it);
+  else if (it.k === 'pg') pgDialog(it);
 }
 
 function xdDialog(it){
@@ -1441,13 +1519,21 @@ svg.addEventListener('pointerdown', e => {
     return;
   }
   if (it){
-    const now = performance.now();
-    if (now - lastTap.t < 380 && lastTap.id === it.id){
+    const now = performance.now(), cellEl = it.k === 'pg' ? e.target.closest('[data-cell]') : null;
+    if (now - lastTap.t < 380 && lastTap.id === it.id && !cellEl){   // quick taps on grid squares just shade them
       const hi = lastTap.hop; lastTap = { t:0, id:null };
       if (it.k === 'nl' && hi !== null && hi === hopIdx && !it.lock) editHop(it, hi); else dbl(it);
       return;
     }
     lastTap = { t:now, id:it.id, hop:hopIdx };
+    if (cellEl && !it.lock){
+      // shade squares: a press toggles one square, dragging paints the same way across more squares
+      const i = +cellEl.dataset.cell, val = it.f[i] === '1' ? '0' : '1';
+      S.sel = new Set([it.id]); e.preventDefault();
+      D = { mode:'paint', id:it.id, val, pre:begin() };
+      pgPaint(i);
+      return;
+    }
     const dotEl = e.target.closest('[data-box]');
     if (it.k === 'xd' && dotEl && !it.lock){
       // pick up one dot: drop it one box left to explode, one box right to unexplode, off the machine to remove it
@@ -1474,6 +1560,10 @@ svg.addEventListener('pointerdown', e => {
     dirty();
     const ids = [...S.sel].filter(id => S.items[id] && !S.items[id].lock);
     if (ids.length) startMove(p, ids, begin(), false);
+    // a click (not a drag) on a percent grid's value button switches percent / fraction / decimal
+    if (it.k === 'pg' && e.target.closest('[data-pgbtn]')){
+      if (D && D.mode === 'move') D.pgBtn = it.id; else pgCycle(it.id);
+    }
   } else {
     // with Move, dragging on empty space draws a box to select several pieces (Shift adds to the selection)
     if (!(e.shiftKey || e.ctrlKey || e.metaKey)) S.sel.clear();
@@ -1485,7 +1575,7 @@ svg.addEventListener('pointerdown', e => {
 function dbl(it){
   if (it.lock) return;
   if (it.k === 'ctr' || AL[it.k]) act(() => { const n = { ...it }; if (n.neg) delete n.neg; else n.neg = true; put([n]); });
-  else if (it.k === 'txt' || it.k === 'nl' || it.k === 'xd') editItem(it);
+  else if (it.k === 'txt' || it.k === 'nl' || it.k === 'xd' || it.k === 'pg') editItem(it);
 }
 
 function eraseAt(e){
@@ -1509,6 +1599,12 @@ window.addEventListener('pointermove', e => {
   if (e.target.closest && e.target.closest('#stage')) sendCursor(e);
   if (!D) return;
   if (D.mode === 'pinch'){ if (touches.size >= 2) pinchMove(); return; }
+  if (D.mode === 'paint'){
+    const el = document.elementFromPoint(e.clientX, e.clientY), c = el && el.closest && el.closest('[data-cell]');
+    const g = c && c.closest('#items > g');
+    if (g && g.dataset.id === D.id) pgPaint(+c.dataset.cell);
+    return;
+  }
   if (D.mode === 'pan'){
     if (!D.moved && Math.hypot(e.clientX - D.sx, e.clientY - D.sy) < 4) return;
     D.moved = true; svg.classList.add('panning');
@@ -1688,8 +1784,9 @@ function endPointer(e){
     }
     dirty(); return;
   }
+  if (d.mode === 'paint'){ if (S.items[d.id]) put([S.items[d.id]]); commit(d.pre); return; }
   if (d.mode === 'move'){
-    if (!d.moved) return;
+    if (!d.moved){ if (d.pgBtn) pgCycle(d.pgBtn); return; }
     if (e && e.type === 'pointerup' && overTray(e)){
       drop(d.ids); relayout(); commit(d.pre); return;
     }
@@ -1997,6 +2094,7 @@ $('#helpBtn').onclick = () => openDlg(`<h2>How to use Edutorium Live</h2><div cl
     <li><b>Pen:</b> choose <b>Freehand</b> or <b>Line</b> next to the colours. Line draws a straight line from where you press to where you let go (Shift snaps it to 15° steps). In Freehand, hold Shift for a straight line.</li>
     <li><b>Hops:</b> drag a <b style="color:#2563eb">+ hop</b> or <b style="color:#dc2626">− hop</b> from <b>Number lines</b> onto a number line, type its value and press Enter (the + or − is added for you). Drag the arc to slide the hop along the line, the dot to move its start, or the arrowhead to move its end. Click a hop's label to change its value or delete it (×). On Intervals, hops snap to the marks. The eraser rubs hops out too.</li>
     <li><b>Isometric dots:</b> with this background, pattern blocks snap their corners onto the dots and rotate 60° at a time so they stay on the dots.</li>
+    <li><b>Percent grids:</b> click squares on a Hundred grid or Ten strip to shade them, or drag across them. Click the value button underneath to switch between percent, fraction and decimal. Double-click the frame (or Edit) to change the size; <b>Clear shading</b> empties it.</li>
     <li><b>Exploding Dots:</b> drag dots and anti-dots into the boxes of a dot machine. Drag a dot one box to the left to explode (10 dots become 1 on the left, or the machine's own rule), one box to the right to unexplode, or off the machine to remove it. A dashed orange box is ready to explode. Double-click the machine to change its boxes, its rule, or fill it with a number.</li>
     <li><b>Background:</b> choose blank, dots, a square grid, a coordinate grid or isometric dots.</li>
     <li><b>Save:</b> save a picture to hand in, or save a board file and open it again later.</li>
