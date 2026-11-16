@@ -96,7 +96,8 @@ main{display:grid;grid-template-columns:224px minmax(0,1fr);min-height:0}
 /* the board has no edges: the whole stage is paper, and you pan and zoom around it */
 #stage{position:relative;z-index:1;background:#fcfbf7;min-width:0;min-height:0;overflow:hidden}
 #board{position:absolute;inset:0;width:100%;height:100%;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none;cursor:default}
-#board.panning{cursor:grabbing}
+#board.hand,#board.hand #items g,#board.hand #items [data-part]{cursor:grab}
+#board.panning,#board.panning #items g,#board.panning #items [data-part]{cursor:grabbing}
 #zoom{position:absolute;right:14px;bottom:14px;z-index:5;display:flex;gap:2px;padding:3px;background:var(--panel);border:1px solid var(--line);border-radius:11px;box-shadow:var(--shadow)}
 #zoom button{display:inline-flex;align-items:center;justify-content:center;min-width:34px;height:32px;padding:0 6px;border:0;border-radius:8px;background:transparent;cursor:pointer;font-size:12.5px;font-weight:700;font-variant-numeric:tabular-nums}
 #zoom button:hover{background:var(--chip-hover)}
@@ -184,6 +185,7 @@ body.embed .brand,body.embed #helpBtn{display:none}
   </div>
   <div class="grp" role="toolbar" aria-label="Tools">
     <button class="btn on" data-tool="select" title="Move and select (V)"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M4.5 3l10.5 6-4.6 1.4L8.2 15z"/></svg><span class="lbl">Move</span></button>
+    <button class="btn" data-tool="hand" title="Hand: drag to move around the board (or hold Space)"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 10V5a1.3 1.3 0 012.6 0v4"/><path d="M9.1 9V3.8a1.3 1.3 0 012.6 0V9"/><path d="M11.7 9V4.8a1.3 1.3 0 012.6 0V11"/><path d="M6.5 10V8.3a1.3 1.3 0 00-2.6 0v3.2c0 3.3 2.4 5.8 5.6 5.8h1c3.1 0 4.4-2.4 4.4-5.3V7.6a1.3 1.3 0 00-2.6 0"/></svg><span class="lbl">Hand</span></button>
     <button class="btn" data-tool="pen" title="Pen (P)"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M13.2 3.6l3.2 3.2L7.2 16H4v-3.2z"/><path d="M11.4 5.4l3.2 3.2"/></svg><span class="lbl">Pen</span></button>
     <button class="btn" data-tool="eraser" title="Erase drawings (E)"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M8.5 16.5h8"/><path d="M3.6 12.2l7.6-7.6 5 5-6.9 6.9H7.9z"/><path d="M7.4 8.4l5 5"/></svg><span class="lbl">Eraser</span></button>
     <button class="btn" data-tool="text" title="Text (T)"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 5.5V4h12v1.5M10 4v12M7.5 16h5"/></svg><span class="lbl">Text</span></button>
@@ -1219,7 +1221,8 @@ function setTool(t){
   $('#inks').hidden = !(t === 'pen' || t === 'text');
   svg.classList.toggle('pen', t === 'pen'); svg.classList.toggle('eraser', t === 'eraser'); svg.classList.toggle('text', t === 'text');
   svg.classList.toggle('hop', t === 'hop');
-  if (t !== 'select'){ S.sel.clear(); dirty(); }
+  svg.classList.toggle('hand', t === 'hand');
+  if (t !== 'select' && t !== 'hand'){ S.sel.clear(); dirty(); }
 }
 document.querySelectorAll('[data-tool]').forEach(b => b.addEventListener('click', () => setTool(b.dataset.tool)));
 
@@ -1327,6 +1330,17 @@ function pinchMove(){
   const w = Math.min(ZMAX, Math.max(ZMIN, D.v0.w * D.d0 / Math.max(20, Math.hypot(a.x - b.x, a.y - b.y)))), k = w / r.width;
   setView({ w, x:D.anchor.x - (mid.x - r.left)*k, y:D.anchor.y - (mid.y - r.top)*k });
 }
+// holding Space turns any tool into the hand for a moment
+let spaceDown = false;
+window.addEventListener('keydown', e => {
+  if (e.code !== 'Space' || e.repeat || dlg.open || hopEd || (e.target.matches && e.target.matches('input,select,textarea,button'))) return;
+  e.preventDefault(); spaceDown = true; svg.classList.add('hand');
+});
+window.addEventListener('keyup', e => {
+  if (e.code !== 'Space') return;
+  spaceDown = false; if (S.tool !== 'hand') svg.classList.remove('hand');
+});
+window.addEventListener('blur', () => { spaceDown = false; if (S.tool !== 'hand') svg.classList.remove('hand'); });
 window.addEventListener('pointerup', e => touches.delete(e.pointerId));
 window.addEventListener('pointercancel', e => touches.delete(e.pointerId));
 
@@ -1341,7 +1355,15 @@ svg.addEventListener('pointerdown', e => {
       pinchStart(); return;
     }
   }
-  if (e.button > 0 || D) return;
+  if (D) return;
+  // moving around the board: the Hand tool, holding Space, or the middle mouse button
+  if (e.button === 1 || (e.button === 0 && (S.tool === 'hand' || spaceDown))){
+    e.preventDefault();
+    D = { mode:'pan', sx:e.clientX, sy:e.clientY, v0:{ ...V }, moved:false, keepSel:true };
+    svg.classList.add('panning');
+    return;
+  }
+  if (e.button > 0) return;
   const p = toB(e), g = e.target.closest('#items > g'), it = g && S.items[g.dataset.id];
   if (S.tool === 'pen'){
     D = { mode:'ink', pts:[Math.round(p.x), Math.round(p.y)] };
@@ -1395,12 +1417,11 @@ svg.addEventListener('pointerdown', e => {
     dirty();
     const ids = [...S.sel].filter(id => S.items[id] && !S.items[id].lock);
     if (ids.length) startMove(p, ids, begin(), false);
-  } else if (e.shiftKey || e.ctrlKey || e.metaKey){
-    // Shift + drag on empty space draws a box to select several pieces
-    D = { mode:'marq', x:p.x, y:p.y };
   } else {
-    // dragging empty space moves around the board; a plain click there clears the selection
-    D = { mode:'pan', sx:e.clientX, sy:e.clientY, v0:{ ...V }, moved:false };
+    // with Move, dragging on empty space draws a box to select several pieces (Shift adds to the selection)
+    if (!(e.shiftKey || e.ctrlKey || e.metaKey)) S.sel.clear();
+    D = { mode:'marq', x:p.x, y:p.y };
+    dirty();
   }
 });
 
@@ -1509,11 +1530,7 @@ function endPointer(e){
   const d = D; D = null;
   tray.classList.remove('drop');
   if (d.mode === 'pinch') return;
-  if (d.mode === 'pan'){
-    svg.classList.remove('panning');
-    if (!d.moved){ S.sel.clear(); dirty(); }
-    return;
-  }
+  if (d.mode === 'pan'){ svg.classList.remove('panning'); return; }
   if (d.mode === 'newdot'){
     d.ghost.remove();
     if (!d.moved){ toast('Drag the dot into a box of a dot machine.'); return; }
@@ -1692,7 +1709,7 @@ bar.addEventListener('click', e => { const b = e.target.closest('[data-act]'); i
 
 /* ---------- keyboard ---------- */
 window.addEventListener('keydown', e => {
-  if (dlg.open || e.target.matches('input,select,textarea')) return;
+  if (dlg.open || (e.target.matches && e.target.matches('input,select,textarea'))) return;
   const k = e.key.toLowerCase(), mod = e.ctrlKey || e.metaKey;
   if (mod && k === 'z'){ e.preventDefault(); e.shiftKey ? redo() : undo(); }
   else if (mod && k === 'y'){ e.preventDefault(); redo(); }
@@ -1895,8 +1912,8 @@ $('#linkBtn').onclick = async () => {
 $('#helpBtn').onclick = () => openDlg(`<h2>How to use Edutorium Live</h2><div class="help">
   <ul>
     <li><b>Add pieces:</b> drag them from the left onto the board, or click one.</li>
-    <li><b>Move:</b> drag a piece. Shift + drag on empty space selects several; Shift-click adds to a selection.</li>
-    <li><b>More space:</b> the board has no edges. Drag empty space to move around; zoom with the − / + buttons, Ctrl + mouse wheel, or two fingers. The % button goes back to the start; the corners button shows everything.</li>
+    <li><b>Move:</b> drag a piece. Drag on empty space to draw a box that selects several. Shift-click adds to a selection.</li>
+    <li><b>More space:</b> the board has no edges. To move around, use the <b>Hand</b> tool, hold the Space bar and drag, or scroll; zoom with the − / + buttons, Ctrl + mouse wheel, or two fingers. The % button goes back to the start; the corners button shows everything.</li>
     <li><b>Group:</b> select several pieces and choose <b>Group</b> (Ctrl+G). Click any of them to move, copy or turn them all. <b>Ungroup</b> (Ctrl+Shift+G) separates them.</li>
     <li><b>Remove:</b> drag pieces back to the left, or press Delete.</li>
     <li><b>Flip:</b> double-click a counter or algebra tile to turn it over.</li>
