@@ -51,6 +51,7 @@ svg{display:block}
 .btn[aria-pressed="true"],.btn.on{background:var(--panel);box-shadow:0 0 0 1px var(--line),0 1px 2px rgba(0,0,0,.08);color:var(--accent)}
 .btn:disabled{opacity:.38;cursor:default;background:transparent}
 .btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.danger{color:var(--danger)}
 .btn.primary:hover{filter:brightness(1.07);background:var(--accent)}
 .dot{width:9px;height:9px;border-radius:50%;background:currentColor;flex:none}
 .swatch{width:26px;height:26px;border-radius:50%;border:3px solid var(--panel);box-shadow:0 0 0 1px var(--line);cursor:pointer;padding:0}
@@ -72,13 +73,33 @@ main{display:grid;grid-template-columns:224px minmax(0,1fr);min-height:0}
 .tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:74px;padding:6px 2px;border:1px solid transparent;
   border-radius:9px;background:var(--chip);cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;font-size:11px;color:var(--muted)}
 .tile:hover{border-color:var(--accent)}
+.tile{min-width:0}
+.tile svg{max-width:100%;height:auto}
 .tile.wall{min-height:0;padding:3px 4px;align-items:flex-start;background:transparent}
 .tile.wall:hover{background:var(--chip)}
+.tiles.lines{grid-template-columns:1fr;gap:6px}
+.hoprow{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.tile.hopt{min-height:0;padding:6px 4px;background:#fcfbf7;border-color:#e3e6eb;color:#4b5563}
+.tile.hopt:hover{border-color:var(--accent)}
+.hopedit{position:fixed;z-index:55;transform:translate(-50%,-50%);display:flex;align-items:center;gap:2px;background:#fff;border:2px solid currentColor;
+  border-radius:10px;padding:2px 2px 2px 9px;box-shadow:var(--shadow);font:800 20px/1.2 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.hopedit input{width:76px;height:32px;border:0;outline:0;padding:0 2px;font:inherit;background:transparent;color:inherit}
+.hopedit input::placeholder{color:#9ca3af;font-weight:600;font-size:15px}
+.hopdel{border:0;background:transparent;color:#6b7280;font:600 20px/1 system-ui;cursor:pointer;padding:4px 7px;border-radius:7px}
+.hopdel:hover{background:#f1f3f6;color:#c62828}
+.ghost{position:fixed;z-index:60;pointer-events:none;transform:translate(-50%,-50%);background:#fcfbf7;border-radius:8px;padding:4px;box-shadow:var(--shadow);opacity:.9}
+.ghost[hidden]{display:none}
+.tile.nlt{min-height:0;padding:8px 4px 6px;background:#fcfbf7;border-color:#e3e6eb;color:#4b5563}
+.tile.nlt:hover{border-color:var(--accent)}
 .tray-hint{font-size:12px;color:var(--muted);margin:8px 2px 0}
 
 #stage{position:relative;z-index:1;background:var(--stage);padding:12px;min-width:0;min-height:0}
 #board{width:100%;height:100%;overflow:visible;touch-action:none;user-select:none;-webkit-user-select:none}
-#board.pen{cursor:crosshair}#board.eraser{cursor:cell}#board.text{cursor:text}
+#board.pen{cursor:crosshair}#board.eraser{cursor:cell}#board.text{cursor:text}#board.hop{cursor:crosshair}
+#board.hop #items g{cursor:crosshair}
+#items [data-part="slide"]{cursor:grab}
+#items [data-part="start"],#items [data-part="end"]{cursor:ew-resize}
+#board.hop #items [data-part]{cursor:crosshair}
 .paper{filter:drop-shadow(0 2px 6px rgba(16,24,40,.18))}
 #items g{cursor:grab}
 #board.pen #items g,#board.text #items g{cursor:inherit}
@@ -161,6 +182,7 @@ body.embed .brand,body.embed #helpBtn{display:none}
     <button class="btn" data-tool="pen" title="Pen (P)"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M13.2 3.6l3.2 3.2L7.2 16H4v-3.2z"/><path d="M11.4 5.4l3.2 3.2"/></svg><span class="lbl">Pen</span></button>
     <button class="btn" data-tool="eraser" title="Erase drawings (E)"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M8.5 16.5h8"/><path d="M3.6 12.2l7.6-7.6 5 5-6.9 6.9H7.9z"/><path d="M7.4 8.4l5 5"/></svg><span class="lbl">Eraser</span></button>
     <button class="btn" data-tool="text" title="Text (T)"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 5.5V4h12v1.5M10 4v12M7.5 16h5"/></svg><span class="lbl">Text</span></button>
+    <button class="btn" data-tool="hop" title="Hop: drag along a number line to draw a hop (H)"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 16.5h15"/><path d="M4.5 14C5 7.5 8 5 10.5 5s5.2 2.5 5.5 8"/><path d="M13.6 11.4l2.4 2.4 1.8-2.9"/></svg><span class="lbl">Hop</span></button>
   </div>
   <div class="grp" id="inks" hidden aria-label="Pen colour"></div>
   <div class="grp">
@@ -284,8 +306,12 @@ const SEED = {
   bean:  { w:58, h:38, v:100,  one:'bean',  many:'beans',  g:'gBean',  e:'#4a0d12', rad:[[.5,.62],[.5,.62],[.46,.38],[.46,.38]] },
   lupin: { w:46, h:40, v:1000, one:'lupin', many:'lupins', g:'gLupin', e:'#8a7040', rad:[[.5,.54],[.5,.54],[.5,.46],[.5,.46]] }
 };
+/* Exploding dots (after James Tanton's model; own drawing): boxes numbered from the right (0 = ones).
+   d[i] = [dots, anti-dots] in box i. Rule "1 ← base": base dots in a box explode into 1 dot in the box to the left. */
+const XD_PAD = 16, XD_BOX = 190, XD_GAP = 14, XD_HEAD = 36, XD_FOOT = 34, XD_MAX = 60;
+const DOT_FILL = '#f59e0b', DOT_EDGE = '#92400e';
 const MAT = new Set(['tf','nl','tap']);
-const KINDS = new Set(['b1','b10','b100','b1000','f','rod','a1','ax','ax2','ctr','tf','sh','nl','txt','ink','tap','corn','pea','bean','lupin']);
+const KINDS = new Set(['b1','b10','b100','b1000','f','rod','a1','ax','ax2','ctr','tf','sh','nl','txt','ink','tap','corn','pea','bean','lupin','xd']);
 
 function size(it){
   const k = it.k;
@@ -294,6 +320,7 @@ function size(it){
   if (SEED[k]){ const s = SEED[k], sc = it.sc || 1; return { w:s.w*sc, h:s.h*sc }; }
   switch (k) {
     case 'tap': return { w:220*TAP, h:310*TAP };
+    case 'xd':  return { w:2*XD_PAD + it.n*XD_BOX + (it.n - 1)*XD_GAP, h:XD_HEAD + XD_BOX + XD_FOOT };
     case 'f':   return { w:FW/it.n, h:FH };
     case 'rod': return { w:it.n*RU, h:RU };
     case 'ctr': return { w:44, h:44 };
@@ -339,6 +366,25 @@ function inner(it, L = S.labels){
            `<path d="M200 40L240 0V200L200 240Z" fill="${side}" stroke="${d}" stroke-width="1.4" stroke-linejoin="round"/>`+
            `<rect x="0" y="40" width="200" height="200" fill="${c}" stroke="${d}" stroke-width="1.4"/>`+
            `<path d="${segs(f)}${segs(t)}${segs(s)}" stroke="${d}" stroke-opacity=".4"/>` + btName(100, 152, '1,000', 34);
+  }
+  if (k === 'xd'){
+    const { w, h } = size(it), n = it.n, B = it.base;
+    let s = `<rect x="1" y="1" width="${w - 2}" height="${h - 2}" rx="16" fill="#e8edf3" stroke="#475569" stroke-width="2.5"/>`;
+    for (let i = 0; i < n; i++){
+      const bx = xdBoxX(it, i), by = XD_HEAD, [pp, nn] = it.d[i], ready = pp >= B || nn >= B;
+      // a box that is full enough to explode gets an orange dashed edge
+      s += `<rect x="${bx}" y="${by}" width="${XD_BOX}" height="${XD_BOX}" rx="12" fill="#ffffff" stroke="${ready ? DOT_FILL : '#64748b'}" stroke-width="${ready ? 3.5 : 2}"${ready ? ' stroke-dasharray="9 6"' : ''}/>`;
+      if (L) s += `<text x="${bx + XD_BOX/2}" y="${XD_HEAD - 10}" font-size="18" font-weight="700" fill="#475569" text-anchor="middle">${(B ** i).toLocaleString('en-US')}</text>`;
+      const m = pp + nn; if (!m) continue;
+      const cols = Math.ceil(Math.sqrt(m)), rows = Math.ceil(m / cols), cell = Math.min(36, (XD_BOX - 16) / Math.max(cols, rows)), r = Math.min(14, cell*.4);
+      const ox = bx + XD_BOX/2 - (cols - 1)*cell/2, oy = by + XD_BOX/2 - (rows - 1)*cell/2;
+      for (let j = 0; j < m; j++){
+        const neg = j >= pp;
+        s += `<circle data-box="${i}" data-neg="${neg ? 1 : 0}" cx="${(ox + (j % cols)*cell).toFixed(1)}" cy="${(oy + Math.floor(j / cols)*cell).toFixed(1)}" r="${r.toFixed(1)}"`+
+             ` fill="${neg ? '#ffffff' : DOT_FILL}" stroke="${DOT_EDGE}" stroke-width="${neg ? 3 : 2}"/>`;
+      }
+    }
+    return s + `<text x="${w/2}" y="${h - 10}" font-size="18" font-weight="800" fill="#334155" text-anchor="middle">1 ← ${B}</text>`;
   }
   if (k === 'tap'){
     const body = '<circle cx="110" cy="66" r="60"/><circle cx="110" cy="208" r="98"/>';
@@ -394,7 +440,7 @@ function inner(it, L = S.labels){
     const w = it.w, x0 = 44, x1 = w-44, y = 36, p = it.p, total = (it.max-it.min)*p;
     let s = `<rect width="${w}" height="96" fill="transparent"/><path d="M${x0-26} ${y}H${x1+26}" stroke="#1f2937" stroke-width="3"/>`+
             `<path d="M${x0-30} ${y}l13 -8v16zM${x1+30} ${y}l-13 -8v16z" fill="#1f2937"/>`;
-    if (total > 0 && total <= 240){
+    if (!it.open && total > 0 && total <= 240){   // an open number line is just the line and arrows
       const small = L && p > 1 && total <= 48;
       for (let i=0;i<=total;i++){
         const x = x0 + (x1-x0)*i/total, major = i % p === 0;
@@ -403,7 +449,7 @@ function inner(it, L = S.labels){
         else if (small) s += `<text x="${x}" y="${y+40}" font-size="14" fill="#4b5563" text-anchor="middle">${mixedText(it.min*p + i, p).replace('-','−')}</text>`;
       }
     }
-    return s;
+    return s + hopsSVG(it);
   }
   if (k === 'txt'){
     const { w, h } = size(it);
@@ -415,6 +461,142 @@ function inner(it, L = S.labels){
            `<path d="${d}" fill="none" stroke="${col(it.c)}" stroke-width="${it.sw}" stroke-linecap="round" stroke-linejoin="round"/>`;
   }
   return '';
+}
+
+/* hops: arrow arcs drawn on a number line. Stored on the line as fractions of its length (0 = left end
+   of the marks, 1 = right end), so they move, copy and save with it. Right = + above, left = − below. */
+const NL_X0 = 44, NL_Y = 36, HOP_UP = '#2563eb', HOP_DOWN = '#dc2626';
+function hopsSVG(it){
+  const x1 = it.w - NL_X0;
+  return (it.hops || []).map((hp, i) => {
+    const xa = NL_X0 + (x1 - NL_X0)*hp.a, xb = NL_X0 + (x1 - NL_X0)*hp.b, up = hp.b > hp.a;
+    const k = Math.min(170, Math.max(50, Math.abs(xb - xa)*.55)), ys = up ? NL_Y - 6 : NL_Y + 6, yc = up ? ys - k : ys + k;
+    const peak = up ? ys - k*.75 : ys + k*.75, c = up ? HOP_UP : HOP_DOWN, d = `M${xa} ${ys}C${xa} ${yc} ${xb} ${yc} ${xb} ${ys}`;
+    // three grab areas: the arc and label slide the whole hop, the start dot moves the start, the arrowhead moves the end
+    return `<g data-hop="${i}"><g data-part="slide"><path d="${d}" fill="none" stroke="transparent" stroke-width="18" pointer-events="stroke"/>`+
+           `<path d="${d}" fill="none" stroke="${c}" stroke-width="3.2" stroke-linecap="round"/>`+
+           (hp.t ? `<text x="${(xa + xb)/2}" y="${up ? peak - 10 : peak + 31}" font-size="30" font-weight="800" fill="${c}" stroke="#fcfbf7" stroke-width="5" paint-order="stroke" text-anchor="middle">${esc(hp.t)}</text>` : '') + `</g>`+
+           `<g data-part="end"><path d="M${xb} ${ys}l-7.5 ${up ? -13 : 13}h15z" fill="${c}"/><circle cx="${xb}" cy="${ys + (up ? -7 : 7)}" r="15" fill="transparent"/></g>`+
+           `<g data-part="start"><circle cx="${xa}" cy="${NL_Y}" r="6.5" fill="#ffffff" stroke="${c}" stroke-width="3"/><circle cx="${xa}" cy="${NL_Y}" r="15" fill="transparent"/></g></g>`;
+  }).join('');
+}
+// board point -> the number line's own coordinates (works for turned lines too)
+function toLocal(it, p){
+  const { w, h } = size(it), cx = it.x + w/2, cy = it.y + h/2, a = -(it.r || 0)*Math.PI/180, dx = p.x - cx, dy = p.y - cy;
+  return { x:dx*Math.cos(a) - dy*Math.sin(a) + w/2, y:dx*Math.sin(a) + dy*Math.cos(a) + h/2 };
+}
+// where along the line a point is; on an Intervals line it snaps to the nearest mark
+function hopFrac(it, p){
+  let f = Math.min(1, Math.max(0, (toLocal(it, p).x - NL_X0) / (it.w - 2*NL_X0)));
+  const T = (it.max - it.min)*it.p;
+  if (!it.open && T > 0 && T <= 240) f = Math.round(f*T)/T;
+  return Math.round(f*10000)/10000;
+}
+// "+3", "−1/4", "+1 1/2" on an Intervals line; just "+" or "−" on an open line
+function hopLabel(it, a, b){
+  const s = b > a ? '+' : '−';
+  if (it.open) return s;
+  return s + mixedText(Math.round(Math.abs(b - a)*(it.max - it.min)*it.p), it.p);
+}
+function editHop(it, i){
+  const hp = it.hops && it.hops[i]; if (!hp) return;
+  openDlg(`<h2>Hop</h2><p>${hp.b > hp.a ? 'A hop to the right (+), drawn above the line.' : 'A hop to the left (−), drawn below the line.'}</p>
+    <label for="hopT">Label</label><input id="hopT" name="t" maxlength="12" value="${esc(hp.t)}" autocomplete="off" autofocus>
+    <menu><button class="btn primary" value="ok">Save</button><button class="btn danger" value="del">Delete hop</button><button class="btn" value="cancel">Cancel</button></menu>`,
+    (v, fd) => {
+      const cur = S.items[it.id]; if (!cur || !cur.hops || !cur.hops[i]) return;
+      const hops = cur.hops.slice();
+      if (v === 'del') hops.splice(i, 1);
+      else hops[i] = { ...hops[i], t:String(fd.get('t') || '').trim().slice(0,12) };
+      act(() => put([{ ...cur, hops }]));
+    });
+}
+/* ---------- exploding dots ---------- */
+const xdBoxX = (it, i) => XD_PAD + (it.n - 1 - i)*(XD_BOX + XD_GAP);
+// which box a board point is over: its number, -1 inside the machine but not in a box, null outside the machine
+function xdBoxAt(it, p){
+  const l = toLocal(it, p), { w, h } = size(it);
+  if (l.x < 0 || l.y < 0 || l.x > w || l.y > h) return null;
+  if (l.y < XD_HEAD - 6 || l.y > XD_HEAD + XD_BOX + 6) return -1;
+  for (let i = 0; i < it.n; i++){ const bx = xdBoxX(it, i); if (l.x >= bx - 6 && l.x <= bx + XD_BOX + 6) return i; }
+  return -1;
+}
+const dotWord = (neg, n) => (neg ? 'anti-dot' : 'dot') + (n === 1 ? '' : 's');
+function xdValue(it){ return it.d.reduce((s, [p, n], i) => s + (p - n)*it.base ** i, 0); }
+// a dot dragged from box `from` and dropped on box `to` (null = taken off the machine)
+function xdMove(it, from, to, neg){
+  const d = it.d.map(x => x.slice()), s = neg ? 1 : 0, B = it.base;
+  if (to === from || to === -1) return null;
+  if (to === null){ d[from][s] -= 1; return { ...it, d }; }
+  if (to === from + 1){
+    if (d[from][s] < B){ toast(`To explode, this box needs ${B} ${dotWord(neg, 2)}. It has ${d[from][s]}.`); return null; }
+    if (d[to][s] + 1 > XD_MAX){ toast('That box is full.'); return null; }
+    d[from][s] -= B; d[to][s] += 1;
+    toast(`Explode! ${B} ${dotWord(neg, B)} → 1 ${dotWord(neg, 1)} in the box to the left.`);
+  } else if (to === from - 1){
+    if (d[to][s] + B > XD_MAX){ toast('That box is too full to unexplode into.'); return null; }
+    d[from][s] -= 1; d[to][s] += B;
+    toast(`Unexplode: 1 ${dotWord(neg, 1)} → ${B} ${dotWord(neg, B)} in the box to the right.`);
+  } else { toast('Move dots one box at a time.'); return null; }
+  return { ...it, d };
+}
+function xdAdd(it, box, neg){
+  const d = it.d.map(x => x.slice()), s = neg ? 1 : 0;
+  if (d[box][s] >= XD_MAX){ toast('That box is full.'); return null; }
+  d[box][s] += 1;
+  return { ...it, d };
+}
+
+// type-in value box that sits on a hop's label: type 10 and Enter gives "+10" (or "−10" for a left hop)
+let hopEd = null;
+function openHopEditor(lineId, idx){
+  closeHopEditor(true);
+  render();
+  const line = S.items[lineId], hp = line && line.hops && line.hops[idx];
+  const g = document.querySelector(`#items > g[data-id="${lineId}"] [data-hop="${idx}"]`);
+  if (!hp || !g) return;
+  const up = hp.b > hp.a, sign = up ? '+' : '−', r = (g.querySelector('text') || g).getBoundingClientRect();
+  const wrap = document.createElement('div');
+  wrap.className = 'hopedit'; wrap.style.color = up ? HOP_UP : HOP_DOWN;
+  // above a + hop, below a − hop, so the hop itself stays in view
+  wrap.style.left = (r.left + r.width/2) + 'px';
+  wrap.style.top = (up ? r.top - 6 : r.bottom + 6) + 'px';
+  wrap.style.transform = up ? 'translate(-50%,-100%)' : 'translate(-50%,0)';
+  wrap.innerHTML = `<span aria-hidden="true">${sign}</span><input maxlength="10" autocomplete="off" aria-label="${sign} hop value" placeholder="value">`+
+                   `<button type="button" class="hopdel" title="Delete hop" aria-label="Delete hop">×</button>`;
+  document.body.appendChild(wrap);
+  const inp = wrap.querySelector('input');
+  inp.value = hp.t.replace(/^[+−-]\s*/, '');
+  hopEd = { lineId, idx, wrap, inp, up };
+  inp.addEventListener('keydown', e => {
+    e.stopPropagation();
+    if (e.key === 'Enter'){ e.preventDefault(); closeHopEditor(true); }
+    else if (e.key === 'Escape'){ e.preventDefault(); closeHopEditor(false); }
+  });
+  inp.addEventListener('blur', () => closeHopEditor(true));
+  const del = wrap.querySelector('.hopdel');
+  del.addEventListener('pointerdown', e => e.preventDefault());   // keep the box open until the click lands
+  del.addEventListener('click', () => {
+    const h = hopEd; if (!h) return;
+    hopEd = null; h.wrap.remove();
+    const cur = S.items[h.lineId];
+    if (cur && cur.hops && cur.hops[h.idx]) act(() => dropHop(cur, h.idx));
+  });
+  inp.focus(); inp.select();
+}
+function closeHopEditor(save){
+  const h = hopEd; if (!h) return;
+  hopEd = null; h.wrap.remove();
+  if (!save) return;
+  const line = S.items[h.lineId], hp = line && line.hops && line.hops[h.idx]; if (!hp) return;
+  const v = h.inp.value.trim().replace(/^[+−-]\s*/, '').slice(0,10), t = (h.up ? '+' : '−') + v;
+  if (t === hp.t) return;
+  const hops = line.hops.slice(); hops[h.idx] = { ...hp, t };
+  act(() => put([{ ...line, hops }]));
+}
+function dropHop(it, i){
+  const hops = (it.hops || []).slice(); hops.splice(i, 1);
+  put([{ ...it, hops }]);
 }
 
 function pathD(p){
@@ -436,9 +618,19 @@ function clean(o){
     case 'f':   it.n = FDEN.includes(+o.n) ? +o.n : 1; break;
     case 'rod': it.n = Math.round(num(o.n,1,1,10)); break;
     case 'sh':  it.s = Object.prototype.hasOwnProperty.call(SH, o.s) ? o.s : 'tri'; break;
-    case 'nl':  it.min = Math.round(num(o.min,0,-1000,1000)); it.max = Math.round(num(o.max,10,it.min+1,it.min+240));
+    case 'nl':  if (o.open) it.open = true;
+                if (Array.isArray(o.hops) && o.hops.length)
+                  it.hops = o.hops.slice(0,60).map(h => ({ a:num(h && h.a,0,0,1), b:num(h && h.b,0,0,1), t:String((h && h.t) || '').slice(0,12) }));
+                it.min =Math.round(num(o.min,0,-1000,1000)); it.max = Math.round(num(o.max,10,it.min+1,it.min+240));
                 it.p = PARTS.includes(+o.p) ? +o.p : 1; it.w = num(o.w,1200,400,1560); break;
     case 'txt': it.text = String(o.text || '').slice(0,80); it.fs = [24,32,48,64].includes(+o.fs) ? +o.fs : 32; it.c = col(o.c); break;
+    case 'xd':
+      it.n = Math.round(num(o.n,3,2,6)); it.base = Math.round(num(o.base,10,2,10));
+      it.d = [...Array(it.n)].map((_, i) => {
+        const v = Array.isArray(o.d) && Array.isArray(o.d[i]) ? o.d[i] : [0,0];
+        return [Math.round(num(v[0],0,0,XD_MAX)), Math.round(num(v[1],0,0,XD_MAX))];
+      });
+      break;
     case 'corn': case 'pea': case 'bean': case 'lupin':
       if (o.sc && +o.sc < 1) it.sc = num(o.sc,1,.2,1); break;
     case 'ink': it.c = col(o.c); it.sw = num(o.sw,4,1,30);
@@ -460,10 +652,10 @@ function tpl(pid){
   if (pid === 'ctrn') return { k:'ctr', neg:true };
   if (pid === 'tf') return { k:'tf' };
   if (pid === 'tap' || SEED[pid]) return { k:pid };
+  if (pid === 'xd') return { k:'xd', n:3, base:10, d:[[0,0],[0,0],[0,0]] };
   if (pid.startsWith('sh-')) return { k:'sh', s:pid.slice(3) };
   if (pid === 'nl') return { k:'nl', min:0, max:10, p:1, w:1200 };
-  if (pid === 'nlf') return { k:'nl', min:0, max:2, p:4, w:1200 };
-  if (pid === 'nl20') return { k:'nl', min:-10, max:10, p:1, w:1400 };
+  if (pid === 'nlo') return { k:'nl', open:true, min:0, max:10, p:1, w:1200 };
   return null;
 }
 
@@ -472,10 +664,11 @@ const GROUPS = [
   { id:'taptinita', name:'Taptinita', tiles:[['tap','Taptinita'],['corn','Corn'],['pea','Pea'],['bean','Bean'],['lupin','Lupin']] },
   { id:'fractions', name:'Fraction bars', wall:FW, tiles:FDEN.map(n => ['f'+n, n===1 ? 'One whole' : 'One ' + ({2:'half',3:'third',4:'fourth',5:'fifth',6:'sixth',8:'eighth',10:'tenth',12:'twelfth'})[n]]) },
   { id:'rods', name:'Number rods', wall:10*RU, tiles:[1,2,3,4,5,6,7,8,9,10].map(n => ['rod'+n, 'Rod ' + n]) },
+  { id:'dots', name:'Exploding Dots', xd:true, tiles:[['xd','Dot machine'],['dotp','Dot'],['dotn','Anti-dot']] },
   { id:'counters', name:'Counters', tiles:[['ctr','Positive'],['ctrn','Negative'],['tf','Ten frame']] },
   { id:'algebra', name:'Algebra tiles', tiles:[['a1','1'],['ax','x'],['ax2','x²'],['a1n','−1'],['axn','−x'],['ax2n','−x²']] },
   { id:'patternblocks', name:'Pattern Blocks', tiles:Object.keys(SH).map(s => ['sh-'+s, SH[s].n]) },
-  { id:'lines', name:'Number lines', tiles:[['nl','0 to 10'],['nlf','Fourths'],['nl20','−10 to 10']] }
+  { id:'lines', name:'Number lines', line:true, tiles:[['nl','Intervals'],['nlo','Open number line'],['hopp','+ hop'],['hopm','− hop']] }
 ];
 
 function buildTray(){
@@ -483,8 +676,44 @@ function buildTray(){
   let html = '';
   for (const g of GROUPS){
     if (want.length && !want.includes(g.id)) continue;
-    html += `<details open><summary>${g.name}</summary><div class="tiles${g.wall?' wall':''}">`;
+    html += `<details open><summary>${g.name}</summary><div class="tiles${g.wall?' wall':''}${g.line || g.xd ? ' lines' : ''}">`;
+    let hopRow = '';
     for (const [pid, label] of g.tiles){
+      if (g.xd){
+        if (pid === 'xd'){
+          const it = { id:'t', x:0, y:0, r:0, ...tpl('xd') }, { w, h } = size(it), sc = 186 / w;
+          html += `<button type="button" class="tile nlt" data-pid="xd"${S.labels ? ` title="${esc(label)}"` : ''} aria-label="Add ${esc(label)}">`+
+                  `<svg width="${(w*sc).toFixed(1)}" height="${(h*sc).toFixed(1)}" viewBox="0 0 ${w} ${h}" aria-hidden="true">${inner(it)}</svg>`+
+                  (S.labels ? `<span>${esc(label)}</span>` : '') + `</button>`;
+        } else {
+          const neg = pid === 'dotn';
+          hopRow += `<button type="button" class="tile hopt" data-pid="${pid}"${S.labels ? ` title="${esc(label)}"` : ''} aria-label="${esc(label)}: drag into a box of a dot machine">`+
+                    `<svg width="34" height="34" viewBox="0 0 34 34" aria-hidden="true"><circle cx="17" cy="17" r="12" fill="${neg ? '#ffffff' : DOT_FILL}" stroke="${DOT_EDGE}" stroke-width="${neg ? 3.5 : 2.5}"/></svg>`+
+                    (S.labels ? `<span>${esc(label)}</span>` : '') + `</button>`;
+        }
+        continue;
+      }
+      if (g.line){
+        // number lines and hops get their own bold previews on a light card, so they read in light and dark mode
+        if (pid === 'hopp' || pid === 'hopm'){
+          // small side-by-side tiles: just the arc with its arrow and sign
+          const up = pid === 'hopp', c = up ? HOP_UP : HOP_DOWN;
+          const pic = `<svg width="64" height="40" viewBox="0 0 64 40" aria-hidden="true">`+
+            (up ? `<path d="M8 34C8 7 42 7 42 32" stroke="${c}" stroke-width="3.2" fill="none" stroke-linecap="round"/><path d="M42 35l-6-10h12z" fill="${c}"/>`+
+                  `<text x="55" y="20" font-size="22" font-weight="800" fill="${c}" text-anchor="middle">+</text>`
+                : `<path d="M42 6C42 33 8 33 8 8" stroke="${c}" stroke-width="3.2" fill="none" stroke-linecap="round"/><path d="M8 5l-6 10h12z" fill="${c}"/>`+
+                  `<text x="55" y="27" font-size="22" font-weight="800" fill="${c}" text-anchor="middle">−</text>`) + `</svg>`;
+          hopRow += `<button type="button" class="tile hopt" data-pid="${pid}"${S.labels ? ` title="${esc(label)}"` : ''} aria-label="${esc(label)}: drag onto a number line">`+
+                    pic + (S.labels ? `<span>${esc(label)}</span>` : '') + `</button>`;
+          continue;
+        }
+        const ticks = pid === 'nlo' ? '' : [...Array(11)].map((_, i) => `M${20 + i*14} 11V23`).join('');
+        const pic = `<svg width="180" height="34" viewBox="0 0 180 34" aria-hidden="true"><path d="M10 17H170${ticks}" stroke="#1f2937" stroke-width="2.2" fill="none"/>`+
+                    `<path d="M4 17l9-5.5v11zM176 17l-9-5.5v11z" fill="#1f2937"/></svg>`;
+        html += `<button type="button" class="tile nlt" data-pid="${pid}"${S.labels ? ` title="${esc(label)}"` : ''} aria-label="Add ${esc(label)}">`+
+                pic + (S.labels ? `<span>${esc(label)}</span>` : '') + `</button>`;
+        continue;
+      }
       const it = { id:'t', x:0, y:0, r:0, ...tpl(pid) }, { w, h } = size(it);
       const sc = g.wall ? 186/g.wall : Math.min(64/w, 46/h, 1.3);
       // names under tiles and numbers on pieces only show when Names is on
@@ -492,6 +721,7 @@ function buildTray(){
               `<svg width="${(w*sc+3).toFixed(1)}" height="${(h*sc+3).toFixed(1)}" viewBox="-1.5 -1.5 ${w+3} ${h+3}" aria-hidden="true">${inner(it)}</svg>`+
               (g.wall || !S.labels ? '' : `<span>${esc(label)}</span>`) + `</button>`;
     }
+    if (hopRow) html += `<div class="hoprow">${hopRow}</div>`;
     html += `</div></details>`;
   }
   html += `<p class="tray-hint">Drag pieces onto the board. Drag them back here to remove them.</p>`;
@@ -633,6 +863,12 @@ function valueText(list){
     const n = ct.filter(i => i.neg).length, p = ct.length - n, v = p - n;
     parts.push(`Counters: ${p} positive, ${n} negative → ${v < 0 ? '−' + (-v) : v}`);
   }
+  for (const m of list.filter(i => i.k === 'xd')){
+    // boxes from the left, e.g. "1 | 3 | 2 = 132"; an anti-dot counts as minus one
+    const digits = m.d.slice().reverse().map(([p, n]) => String(p - n).replace('-','−')).join(' | ');
+    const v = xdValue(m);
+    parts.push(`Dots: ${digits} = ${v < 0 ? '−' + (-v).toLocaleString('en-US') : v.toLocaleString('en-US')}${m.base === 10 ? '' : ` (1 ← ${m.base})`}`);
+  }
   return parts.join('   ·   ');
 }
 
@@ -660,7 +896,7 @@ function hasZeroPair(list){
     const of = list.filter(i => i.k === k);
     if (of.some(i => i.neg) && of.some(i => !i.neg)) return true;
   }
-  return false;
+  return list.some(i => i.k === 'xd' && i.d.some(([p, n]) => p && n));
 }
 function updateBar(){
   const list = selList();
@@ -674,7 +910,7 @@ function updateBar(){
   if (list.some(i => DOWN[i.k])) b.push(abtn('break','brk','Break into 10'));
   if (GROUPABLE.some(k => list.filter(i => i.k === k && !i.lock).length >= 10)) b.push(abtn('group','grp','Group 10'));
   if (hasZeroPair(list)) b.push(abtn('zero','zero','Remove zero pairs'));
-  if (list.length === 1 && ['nl','txt'].includes(list[0].k)) b.push(abtn('edit','edit','Edit'));
+  if (list.length === 1 && ['nl','txt','xd'].includes(list[0].k)) b.push(abtn('edit','edit','Edit'));
   b.push(abtn('front','front', MAT.has(list[0].k) && list.length === 1 ? 'To back' : 'To front'));
   b.push(abtn('dup','dup','Copy'));
   const allLocked = list.every(i => i.lock);
@@ -817,6 +1053,11 @@ function zeroPairs(list){
       drop([...pos.slice(0,n), ...neg.slice(0,n)].map(i => i.id));
       removed += n;
     }
+    // in a dot machine, a dot and an anti-dot in the same box cancel out
+    for (const m of list.filter(i => i.k === 'xd')){
+      const d = m.d.map(([p, n]) => { const z = Math.min(p, n); removed += z; return [p - z, n - z]; });
+      put([{ ...m, d }]);
+    }
   });
   toast(`Removed ${removed} zero pair${removed === 1 ? '' : 's'}.`);
 }
@@ -848,8 +1089,13 @@ async function copyText(t){ try { await navigator.clipboard.writeText(t); return
 const opts = (arr, cur) => arr.map(([v,l]) => `<option value="${v}"${String(v) === String(cur) ? ' selected' : ''}>${esc(l)}</option>`).join('');
 
 function editItem(it){
-  if (it.k === 'nl'){
-    openDlg(`<h2>Number line</h2>
+  if (it.k === 'nl' && it.open){
+    openDlg(`<h2>Open number line</h2><p>Just the line and arrows: draw hops with the <b>Hop</b> tool, or mark it with the pen or text.</p>
+      <label for="nlW">Length</label><select id="nlW" name="w" autofocus>${opts([[800,'Short'],[1200,'Medium'],[1500,'Long']], it.w)}</select>
+      <menu><button class="btn" value="cancel">Cancel</button><button class="btn primary" value="ok">Save</button></menu>`,
+      (v, fd) => act(() => put([{ ...S.items[it.id] || it, w:+fd.get('w') }])));
+  } else if (it.k === 'nl'){
+    openDlg(`<h2>Intervals</h2><p>A number line with equally spaced marks. The numbers show when <b>Names</b> is on.</p>
       <div class="row"><div><label for="nlMin">Start</label><input id="nlMin" name="min" type="number" step="1" value="${it.min}" autofocus></div>
       <div><label for="nlMax">End</label><input id="nlMax" name="max" type="number" step="1" value="${it.max}"></div></div>
       <div class="row"><div><label for="nlP">Split each whole into</label><select id="nlP" name="p">${opts(PARTS.map(p => [p, p === 1 ? 'Wholes only' : p + ' parts']), it.p)}</select></div>
@@ -864,6 +1110,29 @@ function editItem(it){
         act(() => put([{ ...S.items[it.id] || it, min, max, p, w:+fd.get('w') }]));
       });
   } else if (it.k === 'txt') textDialog(it);
+  else if (it.k === 'xd') xdDialog(it);
+}
+
+function xdDialog(it){
+  openDlg(`<h2>Dot machine</h2><p>Drag a dot one box to the left to explode, one box to the right to unexplode, or off the machine to remove it.</p>
+    <div class="row"><div><label for="xdN">Boxes</label><select id="xdN" name="n">${opts([2,3,4,5,6].map(n => [n, n + ' boxes']), it.n)}</select></div>
+    <div><label for="xdB">Rule</label><select id="xdB" name="base">${opts([2,3,4,5,6,7,8,9,10].map(b => [b, '1 ← ' + b]), it.base)}</select></div></div>
+    <label for="xdV">Fill with a number (leave empty to keep the dots)</label><input id="xdV" name="v" inputmode="numeric" autocomplete="off" placeholder="For example: 273">
+    <p id="xdErr" class="warn" hidden></p>
+    <menu><button class="btn primary" value="ok">Save</button><button class="btn" value="cancel">Cancel</button></menu>`,
+    (v, fd) => {
+      const n = +fd.get('n'), base = +fd.get('base'), raw = String(fd.get('v') || '').trim();
+      const cur = S.items[it.id] || it;
+      let d = [...Array(n)].map((_, i) => cur.d[i] ? cur.d[i].slice() : [0,0]);
+      if (raw){
+        let val = Math.round(+raw);
+        const err = !/^\d+$/.test(raw) ? 'Type a whole number, like 273.' : val >= base ** n ? `${val} needs more than ${n} boxes with the rule 1 ← ${base}.` : '';
+        if (err){ const el = $('#xdErr'); el.textContent = err; el.hidden = false; return false; }
+        d = [...Array(n)].map((_, i) => [Math.floor(val / base ** i) % base, 0]);
+      }
+      if (cur.d.slice(n).some(([p, q]) => p || q)) toast('Dots in the boxes that were taken away were removed.');
+      act(() => put([{ ...cur, n, base, d }]));
+    });
 }
 
 function textDialog(it, at){
@@ -897,6 +1166,7 @@ function setTool(t){
   document.querySelectorAll('[data-tool]').forEach(b => b.classList.toggle('on', b.dataset.tool === t));
   $('#inks').hidden = !(t === 'pen' || t === 'text');
   svg.classList.toggle('pen', t === 'pen'); svg.classList.toggle('eraser', t === 'eraser'); svg.classList.toggle('text', t === 'text');
+  svg.classList.toggle('hop', t === 'hop');
   if (t !== 'select'){ S.sel.clear(); dirty(); }
 }
 document.querySelectorAll('[data-tool]').forEach(b => b.addEventListener('click', () => setTool(b.dataset.tool)));
@@ -955,10 +1225,39 @@ svg.addEventListener('pointerdown', e => {
     if (it && it.k === 'txt') textDialog(it); else textDialog(null, p);
     e.preventDefault(); return;
   }
+  const hopEl = e.target.closest('[data-hop]'), hopIdx = hopEl ? +hopEl.dataset.hop : null;
+  if (S.tool === 'hop'){
+    e.preventDefault();
+    if (!it || it.k !== 'nl'){ toast('Start a hop on a number line, then drag left or right.'); return; }
+    if (it.lock){ toast('This number line is locked. Unlock it to add hops.'); return; }
+    D = { mode:'hop', id:it.id, pre:begin(), base:(it.hops || []).slice(), a:hopFrac(it, p), hopIdx };
+    return;
+  }
   if (it){
     const now = performance.now();
-    if (now - lastTap.t < 380 && lastTap.id === it.id){ lastTap = { t:0, id:null }; dbl(it); return; }
-    lastTap = { t:now, id:it.id };
+    if (now - lastTap.t < 380 && lastTap.id === it.id){
+      const hi = lastTap.hop; lastTap = { t:0, id:null };
+      if (it.k === 'nl' && hi !== null && hi === hopIdx && !it.lock) editHop(it, hi); else dbl(it);
+      return;
+    }
+    lastTap = { t:now, id:it.id, hop:hopIdx };
+    const dotEl = e.target.closest('[data-box]');
+    if (it.k === 'xd' && dotEl && !it.lock){
+      // pick up one dot: drop it one box left to explode, one box right to unexplode, off the machine to remove it
+      const neg = dotEl.dataset.neg === '1';
+      S.sel = new Set([it.id]); dirty(); e.preventDefault();
+      D = { mode:'xdot', id:it.id, box:+dotEl.dataset.box, neg, sx:e.clientX, sy:e.clientY, pre:begin(), moved:false,
+            ghost:makeGhost(`<svg width="30" height="30" viewBox="0 0 30 30"><circle cx="15" cy="15" r="11" fill="${neg ? '#ffffff' : DOT_FILL}" stroke="${DOT_EDGE}" stroke-width="${neg ? 3 : 2}"/></svg>`) };
+      return;
+    }
+    if (it.k === 'nl' && hopIdx !== null && !it.lock){
+      // pressing on a hop grabs its arrow end (drag the line itself by its line or marks)
+      S.sel = new Set([it.id]); dirty();
+      const hp0 = it.hops[hopIdx], partEl = e.target.closest('[data-part]');
+      D = { mode:'hopend', id:it.id, idx:hopIdx, pre:begin(), moved:false,
+            part: partEl ? partEl.dataset.part : 'slide', f0:hopFrac(it, p), a0:hp0.a, b0:hp0.b };
+      return;
+    }
     if (e.shiftKey || e.ctrlKey || e.metaKey){
       if (S.sel.has(it.id)){ S.sel.delete(it.id); dirty(); return; }
       S.sel.add(it.id);
@@ -976,13 +1275,15 @@ svg.addEventListener('pointerdown', e => {
 function dbl(it){
   if (it.lock) return;
   if (it.k === 'ctr' || AL[it.k]) act(() => { const n = { ...it }; if (n.neg) delete n.neg; else n.neg = true; put([n]); });
-  else if (it.k === 'txt' || it.k === 'nl') editItem(it);
+  else if (it.k === 'txt' || it.k === 'nl' || it.k === 'xd') editItem(it);
 }
 
 function eraseAt(e){
   const el = document.elementFromPoint(e.clientX, e.clientY), g = el && el.closest && el.closest('#items > g');
   const it = g && S.items[g.dataset.id];
   if (it && it.k === 'ink' && !it.lock) drop([it.id]);
+  const hp = el && el.closest && el.closest('[data-hop]');   // the eraser also rubs out hops
+  if (it && it.k === 'nl' && hp && !it.lock) dropHop(it, +hp.dataset.hop);
 }
 
 let pend = new Set(), pendT = 0;
@@ -996,6 +1297,31 @@ function flush(){
 window.addEventListener('pointermove', e => {
   if (e.target.closest && e.target.closest('#stage')) sendCursor(e);
   if (!D) return;
+  if (D.mode === 'newhop' || D.mode === 'newdot' || D.mode === 'xdot'){
+    if (!D.moved && Math.hypot(e.clientX - D.sx, e.clientY - D.sy) < 6) return;
+    D.moved = true; D.ghost.hidden = false;
+    D.ghost.style.left = e.clientX + 'px'; D.ghost.style.top = e.clientY + 'px';
+    return;
+  }
+  if (D.mode === 'hopend'){
+    // arc/label: slide the whole hop along the line; start dot: move the start; arrowhead: move the end
+    const line = S.items[D.id], hp = line && line.hops && line.hops[D.idx]; if (!hp) return;
+    const f = hopFrac(line, toB(e));
+    let a = hp.a, b = hp.b;
+    if (D.part === 'slide'){
+      let dlt = f - D.f0;
+      dlt = Math.min(dlt, 1 - Math.max(D.a0, D.b0)); dlt = Math.max(dlt, -Math.min(D.a0, D.b0));   // stay on the line
+      a = Math.round((D.a0 + dlt)*10000)/10000; b = Math.round((D.b0 + dlt)*10000)/10000;
+    } else if (D.part === 'start') a = f;
+    else b = f;
+    if (a === b || (a === hp.a && b === hp.b)) return;
+    // a label that was worked out keeps being worked out; a typed label keeps its value and gets the right sign
+    const auto = hp.t === hopLabel(line, hp.a, hp.b);
+    const t = auto ? hopLabel(line, a, b) : (b > a ? '+' : '−') + hp.t.replace(/^[+−-]/, '');
+    const hops = line.hops.slice(); hops[D.idx] = { ...hp, a, b, t };
+    S.items[D.id] = { ...line, hops }; D.moved = true; dirty();
+    return;
+  }
   if (D.mode === 'new'){
     if (Math.hypot(e.clientX - D.sx, e.clientY - D.sy) < 6) return;
     const p = toB(e), it = make(tpl(D.pid), p.x, p.y);
@@ -1008,6 +1334,14 @@ window.addEventListener('pointermove', e => {
     const n = D.pts.length, x = Math.round(p.x), y = Math.round(p.y);
     if (Math.hypot(x - D.pts[n-2], y - D.pts[n-1]) >= 2){ D.pts.push(x, y); liveInk.setAttribute('d', pathD(D.pts)); }
   } else if (D.mode === 'erase') eraseAt(e);
+  else if (D.mode === 'hop'){
+    // live preview: draw the hop on the line without sending it yet
+    const line = S.items[D.id]; if (!line) return;
+    const b = hopFrac(line, p);
+    D.b = b;
+    S.items[D.id] = { ...line, hops: b !== D.a ? [...D.base, { a:D.a, b, t:hopLabel(line, D.a, b) }] : D.base };
+    dirty();
+  }
   else if (D.mode === 'marq'){
     const x = Math.min(p.x, D.x), y = Math.min(p.y, D.y);
     marq.setAttribute('x', x); marq.setAttribute('y', y);
@@ -1033,6 +1367,47 @@ function endPointer(e){
   if (!D) return;
   const d = D; D = null;
   tray.classList.remove('drop');
+  if (d.mode === 'newdot'){
+    d.ghost.remove();
+    if (!d.moved){ toast('Drag the dot into a box of a dot machine.'); return; }
+    const m = machineAt(e), box = m ? xdBoxAt(m, toB(e)) : null;
+    if (!m || box === null || box < 0){ toast('Drop the dot into a box of a dot machine.'); return; }
+    if (m.lock){ toast('This dot machine is locked. Unlock it to add dots.'); return; }
+    const n = xdAdd(m, box, d.neg); if (n){ put([n]); commit(d.pre); }
+    return;
+  }
+  if (d.mode === 'xdot'){
+    d.ghost.remove();
+    if (!d.moved) return;
+    const m = S.items[d.id]; if (!m) return;
+    const p = toB(e), over = overTray(e) ? null : xdBoxAt(m, p);
+    // dropped off the machine (or on the tray): the dot is taken away
+    const n = xdMove(m, d.box, over, d.neg); if (n){ put([n]); commit(d.pre); }
+    return;
+  }
+  if (d.mode === 'newhop'){
+    d.ghost.remove();
+    if (!d.moved){ hopToolHint(); return; }
+    const el = document.elementFromPoint(e.clientX, e.clientY), g = el && el.closest && el.closest('#items > g');
+    const line = g && S.items[g.dataset.id];
+    if (!line || line.k !== 'nl'){ toast('Drop the hop onto a number line.'); return; }
+    if (line.lock){ toast('This number line is locked. Unlock it to add hops.'); return; }
+    // one mark long on Intervals (a tenth of the line on an open line), starting where it was dropped
+    const T = (line.max - line.min)*line.p, step = (!line.open && T > 0 && T <= 240) ? 1/T : 0.1;
+    let a = hopFrac(line, toB(e)), b = a + d.sign*step;
+    if (b > 1){ b = 1; a = 1 - step; }
+    if (b < 0){ b = 0; a = step; }
+    a = Math.round(a*10000)/10000; b = Math.round(b*10000)/10000;
+    put([{ ...line, hops:[...(line.hops || []), { a, b, t:hopLabel(line, a, b) }] }]); commit(d.pre);
+    openHopEditor(line.id, S.items[line.id].hops.length - 1);
+    toast('Type a value and press Enter. Drag the arc to slide the hop, the dot to move its start.');
+    return;
+  }
+  if (d.mode === 'hopend'){
+    if (d.moved){ put([S.items[d.id]]); commit(d.pre); }
+    else openHopEditor(d.id, d.idx);   // a click on a hop opens its value box
+    return;
+  }
   if (d.mode === 'new'){
     // a click on a tray piece: place it near the middle of the board
     const o = (cascade++ % 8) * 26, it = make(tpl(d.pid), 720 + o, 400 + o);
@@ -1050,6 +1425,18 @@ function endPointer(e){
     return;
   }
   if (d.mode === 'erase'){ commit(d.pre); return; }
+  if (d.mode === 'hop'){
+    const line = S.items[d.id]; if (!line) return;
+    if (d.b === undefined || d.b === d.a){
+      S.items[d.id] = { ...line, hops:d.base }; dirty();
+      if (d.hopIdx !== null) openHopEditor(d.id, d.hopIdx);   // a tap on a hop opens its value box
+      else toast('Drag right for a + hop (above) or left for a − hop (below).');
+      return;
+    }
+    put([S.items[d.id]]); commit(d.pre);
+    openHopEditor(d.id, S.items[d.id].hops.length - 1);
+    return;
+  }
   if (d.mode === 'marq'){
     marq.setAttribute('visibility', 'hidden');
     if (d.end && Math.hypot(d.end.x - d.x, d.end.y - d.y) > 6){
@@ -1083,7 +1470,27 @@ function endPointer(e){
   }
 }
 window.addEventListener('pointerup', endPointer);
-window.addEventListener('pointercancel', e => { if (D && D.mode === 'new') { D = null; return; } endPointer(e); });
+window.addEventListener('pointercancel', e => {
+  if (D && D.ghost) D.ghost.remove();
+  if (D && (D.mode === 'new' || D.mode === 'newhop' || D.mode === 'newdot' || D.mode === 'xdot')) { D = null; return; }
+  endPointer(e);
+});
+function makeGhost(svgHtml){
+  const g = document.createElement('div');
+  g.className = 'ghost'; g.innerHTML = svgHtml; g.hidden = true;
+  document.body.appendChild(g);
+  return g;
+}
+// the dot machine under a pointer event, if any
+function machineAt(e){
+  const el = document.elementFromPoint(e.clientX, e.clientY), g = el && el.closest && el.closest('#items > g');
+  const it = g && S.items[g.dataset.id];
+  return it && it.k === 'xd' ? it : null;
+}
+function hopToolHint(){
+  setTool('hop');
+  toast('Hop tool: drag along a number line. Right = + hop above, left = − hop below.');
+}
 
 function snapToFrame(c){
   const cx = c.x + 22, cy = c.y + 22;
@@ -1115,12 +1522,22 @@ tray.addEventListener('pointerdown', e => {
   const t = e.target.closest('.tile');
   if (!t || e.button > 0 || D) return;
   e.preventDefault();
+  const pid = t.dataset.pid;
+  if (pid === 'hopp' || pid === 'hopm' || pid === 'dotp' || pid === 'dotn'){
+    // hops are dragged onto a number line, dots into a dot machine box; a picture follows the pointer
+    const ghost = makeGhost(t.querySelector('svg').outerHTML);
+    D = pid.startsWith('hop') ? { mode:'newhop', sign: pid === 'hopp' ? 1 : -1, sx:e.clientX, sy:e.clientY, pre:begin(), ghost }
+                              : { mode:'newdot', neg: pid === 'dotn', sx:e.clientX, sy:e.clientY, pre:begin(), ghost };
+    return;
+  }
   if (S.tool !== 'select') setTool('select');
-  D = { mode:'new', pid:t.dataset.pid, sx:e.clientX, sy:e.clientY, pre:begin() };
+  D = { mode:'new', pid, sx:e.clientX, sy:e.clientY, pre:begin() };
 });
 tray.addEventListener('click', e => {
   const t = e.target.closest('.tile');
   if (!t || e.detail !== 0) return;   // keyboard activation only; pointer clicks are handled above
+  if (t.dataset.pid.startsWith('hop')){ hopToolHint(); return; }
+  if (t.dataset.pid.startsWith('dot')){ toast('Drag the dot into a box of a dot machine.'); return; }
   const pre = begin(), o = (cascade++ % 8) * 26, it = make(tpl(t.dataset.pid), 720 + o, 400 + o);
   put([it]); S.sel = new Set([it.id]); commit(pre);
 });
@@ -1143,6 +1560,7 @@ window.addEventListener('keydown', e => {
   else if (k === 'p') setTool('pen');
   else if (k === 'e') setTool('eraser');
   else if (k === 't') setTool('text');
+  else if (k === 'h') setTool('hop');
   else if (k.startsWith('arrow') && S.sel.size){
     e.preventDefault();
     const st = e.shiftKey ? 20 : 2, dx = k === 'arrowleft' ? -st : k === 'arrowright' ? st : 0, dy = k === 'arrowup' ? -st : k === 'arrowdown' ? st : 0;
@@ -1331,6 +1749,8 @@ $('#helpBtn').onclick = () => openDlg(`<h2>How to use Edutorium Live</h2><div cl
     <li><b>Flip:</b> double-click a counter or algebra tile to turn it over.</li>
     <li><b>Base ten:</b> select a ten, hundred or thousand and choose <b>Break into 10</b>. Select 10 of the same block and choose <b>Group 10</b>.</li>
     <li><b>Taptinita:</b> drop corn, peas, beans and lupins into the pozos or the red Killa and they settle in. Several seeds can share a pozo; they shrink to fit. Moving the Taptinita moves its seeds too. Select 10 of one seed and choose <b>Group 10</b> to trade up, or select a seed and choose <b>Break into 10</b>.</li>
+    <li><b>Hops:</b> drag a <b style="color:#2563eb">+ hop</b> or <b style="color:#dc2626">− hop</b> from <b>Number lines</b> onto a number line, type its value and press Enter (the + or − is added for you). Drag the arc to slide the hop along the line, the dot to move its start, or the arrowhead to move its end. Click a hop's label to change its value. Or choose <b>Hop</b> in the toolbar and drag along a number line. Drag right for a <b style="color:#2563eb">+</b> hop above the line, left for a <b style="color:#dc2626">−</b> hop below it. On Intervals, hops snap to the marks. Tap a hop to change its label or delete it; the eraser rubs hops out too.</li>
+    <li><b>Exploding Dots:</b> drag dots and anti-dots into the boxes of a dot machine. Drag a dot one box to the left to explode (10 dots become 1 on the left, or the machine's own rule), one box to the right to unexplode, or off the machine to remove it. A dashed orange box is ready to explode. Double-click the machine to change its boxes, its rule, or fill it with a number.</li>
     <li><b>Background:</b> choose blank, dots, a square grid, a coordinate grid or isometric dots.</li>
     <li><b>Save:</b> save a picture to hand in, or save a board file and open it again later.</li>
     <li><b>Edit:</b> double-click a number line or text to change it.</li>
@@ -1340,7 +1760,7 @@ $('#helpBtn').onclick = () => openDlg(`<h2>How to use Edutorium Live</h2><div cl
     <li><b>Work together:</b> one person starts a shared board and gets a code. The partner types the code. Both see every move.</li>
     <li><b>In slides:</b> use <b>Board link</b> to save the board as a link, then add that link to your slide.</li>
   </ul>
-  <p>Keys: R rotate, F flip, Ctrl+D copy, Ctrl+Z undo, arrows nudge, V move, P pen, E eraser, T text.</p></div>
+  <p>Keys: R rotate, F flip, Ctrl+D copy, Ctrl+Z undo, arrows nudge, V move, P pen, E eraser, T text, H hop.</p></div>
   <menu><button class="btn primary" value="cancel">Got it</button></menu>`, null);
 
 /* ---------- toast ---------- */
