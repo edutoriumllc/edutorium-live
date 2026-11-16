@@ -93,14 +93,20 @@ main{display:grid;grid-template-columns:224px minmax(0,1fr);min-height:0}
 .tile.nlt:hover{border-color:var(--accent)}
 .tray-hint{font-size:12px;color:var(--muted);margin:8px 2px 0}
 
-#stage{position:relative;z-index:1;background:var(--stage);padding:12px;min-width:0;min-height:0}
-#board{width:100%;height:100%;overflow:visible;touch-action:none;user-select:none;-webkit-user-select:none}
+/* the board has no edges: the whole stage is paper, and you pan and zoom around it */
+#stage{position:relative;z-index:1;background:#fcfbf7;min-width:0;min-height:0;overflow:hidden}
+#board{position:absolute;inset:0;width:100%;height:100%;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none;cursor:default}
+#board.panning{cursor:grabbing}
+#zoom{position:absolute;right:14px;bottom:14px;z-index:5;display:flex;gap:2px;padding:3px;background:var(--panel);border:1px solid var(--line);border-radius:11px;box-shadow:var(--shadow)}
+#zoom button{display:inline-flex;align-items:center;justify-content:center;min-width:34px;height:32px;padding:0 6px;border:0;border-radius:8px;background:transparent;cursor:pointer;font-size:12.5px;font-weight:700;font-variant-numeric:tabular-nums}
+#zoom button:hover{background:var(--chip-hover)}
+#zoom button svg{width:18px;height:18px}
+#zoom #zoomPct{min-width:52px}
 #board.pen{cursor:crosshair}#board.eraser{cursor:cell}#board.text{cursor:text}#board.hop{cursor:crosshair}
 #board.hop #items g{cursor:crosshair}
 #items [data-part="slide"]{cursor:grab}
 #items [data-part="start"],#items [data-part="end"]{cursor:ew-resize}
 #board.hop #items [data-part]{cursor:crosshair}
-.paper{filter:drop-shadow(0 2px 6px rgba(16,24,40,.18))}
 #items g{cursor:grab}
 #board.pen #items g,#board.text #items g{cursor:inherit}
 #items g.sel{filter:drop-shadow(0 0 1.5px #2563eb) drop-shadow(0 0 2.5px #2563eb)}
@@ -164,7 +170,6 @@ body.embed .brand,body.embed #helpBtn{display:none}
 @media (max-width:720px){
   main{grid-template-columns:1fr;grid-template-rows:minmax(0,1fr) 168px}
   #tray{order:2;border-right:0;border-top:1px solid var(--line)}
-  #stage{padding:6px}
   .two{grid-template-columns:1fr}
   #actionbar{top:8px}
 }
@@ -211,6 +216,7 @@ body.embed .brand,body.embed #helpBtn{display:none}
       <defs>
         <pattern id="dots" width="40" height="40" patternUnits="userSpaceOnUse"><circle cx="20" cy="20" r="1.7" fill="#d3d9e2"/></pattern>
         <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#dce2ea" stroke-width="1.5"/></pattern>
+        <pattern id="cgrid" width="50" height="50" patternUnits="userSpaceOnUse"><path d="M50 0H0V50" fill="none" stroke="#dde3eb" stroke-width="1.5"/></pattern>
         <!-- isometric dots 30 apart: pattern blocks (side 60) sit exactly on them -->
         <pattern id="iso" width="30" height="51.9615" patternUnits="userSpaceOnUse"><g fill="#bcc4d0"><circle cx="0" cy="0" r="2.2"/><circle cx="30" cy="0" r="2.2"/><circle cx="15" cy="25.98" r="2.2"/><circle cx="0" cy="51.9615" r="2.2"/><circle cx="30" cy="51.9615" r="2.2"/></g></pattern>
         <!-- Taptinita seeds: same colours as code/taptinita/web/style.css -->
@@ -219,13 +225,19 @@ body.embed .brand,body.embed #helpBtn{display:none}
         <radialGradient id="gBean" cx=".35" cy=".3" r=".85"><stop offset=".10" stop-color="#ffb3a8"/><stop offset=".40" stop-color="#c22f3a"/><stop offset="1" stop-color="#4a0d12"/></radialGradient>
         <radialGradient id="gLupin" cx=".38" cy=".32" r=".85"><stop offset=".16" stop-color="#fffdf4"/><stop offset=".48" stop-color="#f1e2b8"/><stop offset="1" stop-color="#a88a4e"/></radialGradient>
       </defs>
-      <rect class="paper" x="0" y="0" width="1600" height="900" rx="14" fill="#fcfbf7"/>
       <g id="bg" pointer-events="none"></g>
       <g id="items"></g>
+      <g id="grpLines" pointer-events="none"></g>
       <path id="liveInk" fill="none" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
       <rect id="marquee" fill="rgba(37,99,235,.08)" stroke="#2563eb" stroke-width="2" stroke-dasharray="8 6" visibility="hidden" pointer-events="none"/>
       <g id="cursors" pointer-events="none"></g>
     </svg>
+    <div id="zoom" role="group" aria-label="Zoom">
+      <button type="button" data-zoom="out" title="Zoom out (Ctrl −)" aria-label="Zoom out"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 10h10"/></svg></button>
+      <button type="button" data-zoom="home" id="zoomPct" title="Back to the starting view (Ctrl 0)">100%</button>
+      <button type="button" data-zoom="in" title="Zoom in (Ctrl +)" aria-label="Zoom in"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 10h10M10 5v10"/></svg></button>
+      <button type="button" data-zoom="fit" title="Show everything on the board" aria-label="Show everything on the board"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5V3h4.5M12.5 3H17v4.5M17 12.5V17h-4.5M7.5 17H3v-4.5"/></svg></button>
+    </div>
   </section>
 </main>
 
@@ -239,7 +251,7 @@ body.embed .brand,body.embed #helpBtn{display:none}
    All drawings and code are original. Live pairing uses the open-source PeerJS
    library (MIT), loaded only when someone clicks "Work together". */
 
-const BW = 1600, BH = 900;
+const BW = 1600, BH = 900, BIG = 50000;   // BW × BH = the starting view; BIG = how far the endless board reaches
 const $ = s => document.querySelector(s);
 const svg = $('#board'), gItems = $('#items'), gCur = $('#cursors'), liveInk = $('#liveInk'),
       marq = $('#marquee'), tray = $('#tray'), bar = $('#actionbar'), dlg = $('#dlg'), dlgForm = $('#dlgForm');
@@ -611,8 +623,9 @@ function clean(o){
   if (!o || typeof o !== 'object') return null;
   const id = String(o.id || '');
   if (!/^[\w-]{1,40}$/.test(id) || !KINDS.has(o.k)) return null;
-  const it = { id, k:o.k, x:num(o.x,0,-4000,6000), y:num(o.y,0,-4000,6000), r:num(o.r,0,-720,720), z:num(o.z,0,-1e7,1e7) };
+  const it = { id, k:o.k, x:num(o.x,0,-BIG,BIG), y:num(o.y,0,-BIG,BIG), r:num(o.r,0,-720,720), z:num(o.z,0,-1e7,1e7) };
   if (o.lock) it.lock = true;
+  if (typeof o.grp === 'string' && /^[\w-]{1,24}$/.test(o.grp)) it.grp = o.grp;
   if (o.neg && (o.k === 'ctr' || AL[o.k])) it.neg = true;
   switch (o.k){
     case 'f':   it.n = FDEN.includes(+o.n) ? +o.n : 1; break;
@@ -813,6 +826,15 @@ function render(){
   }
   for (const [id, e] of els) if (!seen.has(id)){ e.remove(); els.delete(id); }
   for (const id of [...S.sel]) if (!S.items[id]) S.sel.delete(id);
+  // a dashed outline around each selected group
+  const boxes = {};
+  for (const id of S.sel){
+    const it = S.items[id]; if (!it || !it.grp) continue;
+    const q = bbox(it), b = boxes[it.grp] || (boxes[it.grp] = { l:1e9, t:1e9, r:-1e9, b:-1e9 });
+    b.l = Math.min(b.l, q.l); b.t = Math.min(b.t, q.t); b.r = Math.max(b.r, q.r); b.b = Math.max(b.b, q.b);
+  }
+  const gl = Object.values(boxes).map(b => `<rect x="${b.l - 12}" y="${b.t - 12}" width="${b.r - b.l + 24}" height="${b.b - b.t + 24}" rx="12" fill="none" stroke="#2563eb" stroke-width="2" stroke-dasharray="10 7" vector-effect="non-scaling-stroke"/>`).join('');
+  const gEl = $('#grpLines'); if (gEl._v !== gl){ gEl.innerHTML = gl; gEl._v = gl; }
   updateBar();
 }
 
@@ -885,12 +907,19 @@ const IC = {
   lock:'<rect x="4.5" y="9" width="11" height="8" rx="2"/><path d="M7 9V6.5a3 3 0 016 0V9"/>',
   unlock:'<rect x="4.5" y="9" width="11" height="8" rx="2"/><path d="M7 9V6.5a3 3 0 015.8-1"/>',
   del:'<path d="M4 6h12M8 6V4h4v2M5.5 6l.8 10h7.4l.8-10"/>',
-  front:'<rect x="6" y="6" width="11" height="11" rx="2"/><path d="M3 13V5a2 2 0 012-2h8"/>'
+  front:'<rect x="6" y="6" width="11" height="11" rx="2"/><path d="M3 13V5a2 2 0 012-2h8"/>',
+  grp2:'<rect x="2.5" y="2.5" width="15" height="15" rx="2.5" stroke-dasharray="2.6 2.4"/><rect x="5.5" y="5.5" width="5" height="5" rx="1"/><rect x="9.5" y="9.5" width="5" height="5" rx="1"/>',
+  ungrp:'<rect x="2.5" y="2.5" width="6.5" height="6.5" rx="1.3"/><rect x="11" y="11" width="6.5" height="6.5" rx="1.3"/><path d="M12 3.5l4.5 4.5M16.5 3.5L12 8"/>'
 };
 const ico = n => `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${IC[n]}</svg>`;
 const abtn = (a, icon, label, extra='') => `<button type="button" class="act ${extra}" data-act="${a}" title="${label}" aria-label="${label}">${ico(icon)}<span class="lbl">${label}</span></button>`;
 
 function selList(){ return [...S.sel].map(id => S.items[id]).filter(Boolean); }
+// every piece in the same group as `it` (just `it` if it is not grouped)
+function groupOf(it){
+  if (!it || !it.grp) return it ? [it.id] : [];
+  return Object.values(S.items).filter(o => o.grp === it.grp).map(o => o.id);
+}
 function hasZeroPair(list){
   for (const k of ['ctr','a1','ax','ax2']){
     const of = list.filter(i => i.k === k);
@@ -902,7 +931,7 @@ function updateBar(){
   const list = selList();
   if (!list.length){ bar.hidden = true; bar._sig = ''; return; }
   const v = S.values ? valueText(list) : '';
-  const sig = list.map(i => i.id + i.k + (i.neg?1:0) + (i.lock?1:0)).join() + '|' + v;
+  const sig = list.map(i => i.id + i.k + (i.neg?1:0) + (i.lock?1:0) + (i.grp || '')).join() + '|' + v;
   if (sig === bar._sig) return;
   bar._sig = sig;
   const b = [abtn('rotL','rotL','Rotate left'), abtn('rotR','rotR','Rotate right')];
@@ -911,6 +940,9 @@ function updateBar(){
   if (GROUPABLE.some(k => list.filter(i => i.k === k && !i.lock).length >= 10)) b.push(abtn('group','grp','Group 10'));
   if (hasZeroPair(list)) b.push(abtn('zero','zero','Remove zero pairs'));
   if (list.length === 1 && ['nl','txt','xd'].includes(list[0].k)) b.push(abtn('edit','edit','Edit'));
+  const grps = new Set(list.map(i => i.grp).filter(Boolean));
+  if (list.length > 1 && !(grps.size === 1 && list.every(i => i.grp))) b.push(abtn('grp','grp2','Group'));
+  if (grps.size) b.push(abtn('ungrp','ungrp','Ungroup'));
   b.push(abtn('front','front', MAT.has(list[0].k) && list.length === 1 ? 'To back' : 'To front'));
   b.push(abtn('dup','dup','Copy'));
   const allLocked = list.every(i => i.lock);
@@ -926,8 +958,17 @@ function doAction(a){
   const free = list.filter(i => !i.lock);
   if (a === 'rotL' || a === 'rotR'){
     const turn = free.filter(i => i.k !== 'tap');   // the Taptinita stays upright so its seeds stay in their pozos
-    const step = turn.every(i => i.k === 'sh') ? 30 : 90;
-    act(() => put(turn.map(i => ({ ...i, r:(((i.r||0) + (a === 'rotL' ? -step : step)) % 360 + 360) % 360 }))));
+    const step = (turn.every(i => i.k === 'sh') ? 30 : 90) * (a === 'rotL' ? -1 : 1), norm = r => ((r % 360) + 360) % 360;
+    if (turn.length > 1){
+      // several pieces (a group) turn together around their shared centre
+      let l = 1e9, t = 1e9, r = -1e9, b = -1e9;
+      turn.forEach(i => { const q = bbox(i); l = Math.min(l, q.l); t = Math.min(t, q.t); r = Math.max(r, q.r); b = Math.max(b, q.b); });
+      const gx = (l + r)/2, gy = (t + b)/2, ang = step*Math.PI/180, cs = Math.cos(ang), sn = Math.sin(ang);
+      act(() => put(turn.map(i => {
+        const { w, h } = size(i), dx = i.x + w/2 - gx, dy = i.y + h/2 - gy;
+        return { ...i, x:Math.round((gx + dx*cs - dy*sn - w/2)*2)/2, y:Math.round((gy + dx*sn + dy*cs - h/2)*2)/2, r:norm((i.r || 0) + step) };
+      })));
+    } else act(() => put(turn.map(i => ({ ...i, r:norm((i.r || 0) + step) }))));
   } else if (a === 'flip'){
     act(() => put(free.filter(i => i.k === 'ctr' || AL[i.k]).map(i => { const n = { ...i }; if (n.neg) delete n.neg; else n.neg = true; return n; })));
   } else if (a === 'break') breakApart(free);
@@ -939,9 +980,20 @@ function doAction(a){
     else { let z = zTop(); act(() => put(list.map(i => ({ ...i, z:z++ })))); }
   } else if (a === 'dup'){
     let z = zTop();
-    const copies = withSeeds(list).map(i => { const n = structuredClone(i); n.id = newId(); n.x += 30; n.y += 30; n.z = MAT.has(n.k) ? zBottom() - 1 : z++; delete n.lock; return n; });
+    const newGrp = {};   // copies of a group become a new group of their own
+    const copies = withSeeds(list).map(i => { const n = structuredClone(i);
+      if (n.grp) n.grp = newGrp[n.grp] || (newGrp[n.grp] = 'g' + rid()); n.id = newId(); n.x += 30; n.y += 30; n.z = MAT.has(n.k) ? zBottom() - 1 : z++; delete n.lock; return n; });
     act(() => put(copies));
     S.sel = new Set(copies.map(c => c.id)); dirty();
+  } else if (a === 'grp'){
+    if (list.length < 2){ toast('Select two or more pieces to group them.'); return; }
+    const g = 'g' + rid();
+    act(() => put(list.map(i => ({ ...i, grp:g }))));
+    toast('Grouped. Click any piece in the group to move them all.');
+  } else if (a === 'ungrp'){
+    const had = list.filter(i => i.grp); if (!had.length) return;
+    act(() => put(had.map(i => { const n = { ...i }; delete n.grp; return n; })));
+    toast('Ungrouped.');
   } else if (a === 'lock'){
     const lockIt = !list.every(i => i.lock);
     act(() => put(list.map(i => { const n = { ...i }; if (lockIt) n.lock = true; else delete n.lock; return n; })));
@@ -1212,7 +1264,83 @@ function startMove(p, ids, pre, fromTray){
         orig:new Map(ids.map(id => [id, { x:S.items[id].x, y:S.items[id].y }])) };
 }
 
+/* ---------- view: pan and zoom over a board with no edges ----------
+   V is the part of the board on screen (board units); its height follows the stage's shape.
+   Each person has their own view; pieces stay shared. */
+const V = { x:0, y:0, w:BW }, ZMIN = 250, ZMAX = 20000;
+function stageSize(){ const r = svg.getBoundingClientRect(); return { sw:Math.max(1, r.width), sh:Math.max(1, r.height), r }; }
+function viewH(){ const { sw, sh } = stageSize(); return V.w * sh / sw; }
+// the starting view: the original 1600 × 900 area, fitted to the screen
+function homeView(){ const { sw, sh } = stageSize(), a = sw / sh, w = Math.max(BW, BH*a); return { x:BW/2 - w/2, y:BH/2 - w/a/2, w }; }
+function applyView(){
+  svg.setAttribute('viewBox', `${V.x} ${V.y} ${V.w} ${viewH()}`);
+  $('#zoomPct').textContent = Math.round(homeView().w / V.w * 100) + '%';
+}
+function setView(v){ Object.assign(V, v); applyView(); }
+function viewCenter(){ return { x:V.x + V.w/2, y:V.y + viewH()/2 }; }
+function zoomAt(f, px, py){
+  const w = Math.min(ZMAX, Math.max(ZMIN, V.w / f)), k = w / V.w;
+  V.x = px - (px - V.x)*k; V.y = py - (py - V.y)*k; V.w = w; applyView();
+}
+function contentBox(){
+  const its = Object.values(S.items); if (!its.length) return null;
+  let l = 1e9, t = 1e9, r = -1e9, b = -1e9;
+  for (const it of its){
+    const q = bbox(it), extra = it.k === 'nl' && it.hops && it.hops.length ? 190 : 0;   // hops arc above and below their line
+    l = Math.min(l, q.l); t = Math.min(t, q.t - extra); r = Math.max(r, q.r); b = Math.max(b, q.b + extra);
+  }
+  return { l, t, r, b };
+}
+function fitAll(){
+  const c = contentBox(); if (!c) return setView(homeView());
+  const { sw, sh } = stageSize(), a = sw / sh, pad = 60;
+  const w = Math.min(ZMAX, Math.max(400, c.r - c.l + 2*pad, (c.b - c.t + 2*pad)*a));
+  setView({ x:(c.l + c.r)/2 - w/2, y:(c.t + c.b)/2 - w/a/2, w });
+}
+$('#zoom').addEventListener('click', e => {
+  const b = e.target.closest('[data-zoom]'); if (!b) return;
+  const z = b.dataset.zoom, c = viewCenter();
+  if (z === 'in') zoomAt(1.25, c.x, c.y); else if (z === 'out') zoomAt(1/1.25, c.x, c.y);
+  else if (z === 'home') setView(homeView()); else fitAll();
+});
+// trackpad or wheel scrolls the board; Ctrl + wheel (or a trackpad pinch) zooms at the pointer
+svg.addEventListener('wheel', e => {
+  e.preventDefault();
+  if (e.ctrlKey || e.metaKey){ const p = toB(e); zoomAt(Math.exp(-e.deltaY*0.0025), p.x, p.y); return; }
+  const k = V.w / stageSize().sw * (e.deltaMode === 1 ? 30 : 1);
+  V.x += (e.shiftKey && !e.deltaX ? e.deltaY : e.deltaX)*k;
+  V.y += (e.shiftKey && !e.deltaX ? 0 : e.deltaY)*k;
+  applyView();
+}, { passive:false });
+new ResizeObserver(() => applyView()).observe($('#stage'));
+// two fingers on a touch screen pinch to zoom and drag to pan
+const touches = new Map();
+function pinchStart(){
+  const [a, b] = [...touches.values()], { r } = stageSize();
+  const mid = { x:(a.x + b.x)/2, y:(a.y + b.y)/2 }, k = V.w / r.width;
+  D = { mode:'pinch', v0:{ ...V }, d0:Math.max(20, Math.hypot(a.x - b.x, a.y - b.y)),
+        anchor:{ x:V.x + (mid.x - r.left)*k, y:V.y + (mid.y - r.top)*k } };
+}
+function pinchMove(){
+  const [a, b] = [...touches.values()], { r } = stageSize();
+  const mid = { x:(a.x + b.x)/2, y:(a.y + b.y)/2 };
+  const w = Math.min(ZMAX, Math.max(ZMIN, D.v0.w * D.d0 / Math.max(20, Math.hypot(a.x - b.x, a.y - b.y)))), k = w / r.width;
+  setView({ w, x:D.anchor.x - (mid.x - r.left)*k, y:D.anchor.y - (mid.y - r.top)*k });
+}
+window.addEventListener('pointerup', e => touches.delete(e.pointerId));
+window.addEventListener('pointercancel', e => touches.delete(e.pointerId));
+
 svg.addEventListener('pointerdown', e => {
+  if (e.pointerType === 'touch'){
+    touches.set(e.pointerId, { x:e.clientX, y:e.clientY });
+    // a second finger turns whatever the first one started (unless it is already dragging a piece) into a pinch
+    if (touches.size === 2 && !(D && D.mode === 'move' && D.moved)){
+      if (D && D.ghost) D.ghost.remove();
+      if (D && D.mode === 'move') commit(D.pre);
+      marq.setAttribute('visibility', 'hidden');
+      pinchStart(); return;
+    }
+  }
   if (e.button > 0 || D) return;
   const p = toB(e), g = e.target.closest('#items > g'), it = g && S.items[g.dataset.id];
   if (S.tool === 'pen'){
@@ -1258,17 +1386,21 @@ svg.addEventListener('pointerdown', e => {
             part: partEl ? partEl.dataset.part : 'slide', f0:hopFrac(it, p), a0:hp0.a, b0:hp0.b };
       return;
     }
+    // a grouped piece always brings its whole group with it
+    const mates = groupOf(it);
     if (e.shiftKey || e.ctrlKey || e.metaKey){
-      if (S.sel.has(it.id)){ S.sel.delete(it.id); dirty(); return; }
-      S.sel.add(it.id);
-    } else if (!S.sel.has(it.id)){ S.sel.clear(); S.sel.add(it.id); }
+      if (S.sel.has(it.id)){ mates.forEach(id => S.sel.delete(id)); dirty(); return; }
+      mates.forEach(id => S.sel.add(id));
+    } else if (!S.sel.has(it.id)){ S.sel = new Set(mates); }
     dirty();
     const ids = [...S.sel].filter(id => S.items[id] && !S.items[id].lock);
     if (ids.length) startMove(p, ids, begin(), false);
-  } else {
-    if (!(e.shiftKey || e.ctrlKey || e.metaKey)) S.sel.clear();
+  } else if (e.shiftKey || e.ctrlKey || e.metaKey){
+    // Shift + drag on empty space draws a box to select several pieces
     D = { mode:'marq', x:p.x, y:p.y };
-    dirty();
+  } else {
+    // dragging empty space moves around the board; a plain click there clears the selection
+    D = { mode:'pan', sx:e.clientX, sy:e.clientY, v0:{ ...V }, moved:false };
   }
 });
 
@@ -1295,8 +1427,17 @@ function flush(){
 }
 
 window.addEventListener('pointermove', e => {
+  if (touches.has(e.pointerId)) touches.set(e.pointerId, { x:e.clientX, y:e.clientY });
   if (e.target.closest && e.target.closest('#stage')) sendCursor(e);
   if (!D) return;
+  if (D.mode === 'pinch'){ if (touches.size >= 2) pinchMove(); return; }
+  if (D.mode === 'pan'){
+    if (!D.moved && Math.hypot(e.clientX - D.sx, e.clientY - D.sy) < 4) return;
+    D.moved = true; svg.classList.add('panning');
+    const k = D.v0.w / stageSize().sw;
+    setView({ x:D.v0.x - (e.clientX - D.sx)*k, y:D.v0.y - (e.clientY - D.sy)*k });
+    return;
+  }
   if (D.mode === 'newhop' || D.mode === 'newdot' || D.mode === 'xdot'){
     if (!D.moved && Math.hypot(e.clientX - D.sx, e.clientY - D.sy) < 6) return;
     D.moved = true; D.ghost.hidden = false;
@@ -1367,6 +1508,12 @@ function endPointer(e){
   if (!D) return;
   const d = D; D = null;
   tray.classList.remove('drop');
+  if (d.mode === 'pinch') return;
+  if (d.mode === 'pan'){
+    svg.classList.remove('panning');
+    if (!d.moved){ S.sel.clear(); dirty(); }
+    return;
+  }
   if (d.mode === 'newdot'){
     d.ghost.remove();
     if (!d.moved){ toast('Drag the dot into a box of a dot machine.'); return; }
@@ -1410,7 +1557,7 @@ function endPointer(e){
   }
   if (d.mode === 'new'){
     // a click on a tray piece: place it near the middle of the board
-    const o = (cascade++ % 8) * 26, it = make(tpl(d.pid), 720 + o, 400 + o);
+    const o = (cascade++ % 8) * 26, c = viewCenter(), it = make(tpl(d.pid), c.x - 80 + o, c.y - 50 + o);
     put([it]); S.sel = new Set([it.id]); commit(d.pre);
     return;
   }
@@ -1445,7 +1592,7 @@ function endPointer(e){
         const b = bbox(S.items[id]);
         const hit = MAT.has(S.items[id].k) ? (b.l >= r.l && b.r <= r.r && b.t >= r.t && b.b <= r.b)
                                           : (b.l < r.r && b.r > r.l && b.t < r.b && b.b > r.t);
-        if (hit) S.sel.add(id);
+        if (hit) groupOf(S.items[id]).forEach(m => S.sel.add(m));
       }
     }
     dirty(); return;
@@ -1458,9 +1605,9 @@ function endPointer(e){
     const changed = [];
     for (const id of d.ids){
       const it = S.items[id]; if (!it) continue;
-      const { w, h } = size(it);
-      it.x = Math.round(Math.min(BW - w/2, Math.max(-w/2, it.x)) * 2) / 2;
-      it.y = Math.round(Math.min(BH - h/2, Math.max(-h/2, it.y)) * 2) / 2;
+      // the board has no edges, so pieces can go anywhere
+      it.x = Math.round(it.x * 2) / 2;
+      it.y = Math.round(it.y * 2) / 2;
       if (it.k === 'ctr') snapToFrame(it);
       if (SEED[it.k] && d.ids.length === 1) snapToTap(it);
       changed.push(it);
@@ -1538,7 +1685,7 @@ tray.addEventListener('click', e => {
   if (!t || e.detail !== 0) return;   // keyboard activation only; pointer clicks are handled above
   if (t.dataset.pid.startsWith('hop')){ hopToolHint(); return; }
   if (t.dataset.pid.startsWith('dot')){ toast('Drag the dot into a box of a dot machine.'); return; }
-  const pre = begin(), o = (cascade++ % 8) * 26, it = make(tpl(t.dataset.pid), 720 + o, 400 + o);
+  const pre = begin(), o = (cascade++ % 8) * 26, c = viewCenter(), it = make(tpl(t.dataset.pid), c.x - 80 + o, c.y - 50 + o);
   put([it]); S.sel = new Set([it.id]); commit(pre);
 });
 bar.addEventListener('click', e => { const b = e.target.closest('[data-act]'); if (b) doAction(b.dataset.act); });
@@ -1550,6 +1697,10 @@ window.addEventListener('keydown', e => {
   if (mod && k === 'z'){ e.preventDefault(); e.shiftKey ? redo() : undo(); }
   else if (mod && k === 'y'){ e.preventDefault(); redo(); }
   else if (mod && k === 'd'){ e.preventDefault(); doAction('dup'); }
+  else if (mod && (k === '=' || k === '+')){ e.preventDefault(); const c = viewCenter(); zoomAt(1.25, c.x, c.y); }
+  else if (mod && (k === '-' || k === '_')){ e.preventDefault(); const c = viewCenter(); zoomAt(1/1.25, c.x, c.y); }
+  else if (mod && k === '0'){ e.preventDefault(); setView(homeView()); }
+  else if (mod && k === 'g'){ e.preventDefault(); doAction(e.shiftKey ? 'ungrp' : 'grp'); }
   else if (mod && k === 'a'){ e.preventDefault(); S.sel = new Set(Object.keys(S.items)); dirty(); }
   else if (mod) return;
   else if (k === 'delete' || k === 'backspace'){ e.preventDefault(); doAction('del'); }
@@ -1599,34 +1750,25 @@ function replaceBoard(items){
 /* ---------- backgrounds (part of the board: saved in links and files, shared with partners) ---------- */
 const BGS = [['blank','Blank'],['dots','Dots'],['grid','Square grid'],['coord','Coordinate grid'],['coord1','First quadrant grid'],['iso','Isometric dots']];
 const isBg = v => BGS.some(b => b[0] === v);
+// every background reaches as far as the board does (BIG in each direction)
 function bgSVG(v){
-  const full = f => `<rect width="${BW}" height="${BH}" rx="14" fill="${f}"/>`;
+  const full = f => `<rect x="${-BIG}" y="${-BIG}" width="${2*BIG}" height="${2*BIG}" fill="${f}"/>`;
   if (v === 'dots') return full('url(#dots)');
   if (v === 'grid') return full('url(#grid)');
   if (v === 'iso')  return full('url(#iso)');
   if (v !== 'coord' && v !== 'coord1') return '';
-  const u = 50, q1 = v === 'coord1';
-  const ox = q1 ? 100 : 800, oy = q1 ? 800 : 450;
-  const xl = q1 ? ox : 0, xr = q1 ? 1560 : BW, yt = q1 ? 40 : 0, yb = q1 ? oy : BH;
-  let grid = '', lab = '';
-  for (let x = ox; x <= xr; x += u) grid += `M${x} ${yt}V${yb}`;
-  for (let x = ox - u; x >= xl; x -= u) grid += `M${x} ${yt}V${yb}`;
-  for (let y = oy; y >= yt; y -= u) grid += `M${xl} ${y}H${xr}`;
-  for (let y = oy + u; y <= yb; y += u) grid += `M${xl} ${y}H${xr}`;
-  for (let x = xl, i; x <= xr - 20; x += u){
-    i = Math.round((x - ox) / u); if (!i || x < xl + 10) continue;
-    lab += `<text x="${x}" y="${oy + 22}" text-anchor="middle">${String(i).replace('-','−')}</text>`;
+  // origin at the middle of the starting view (all four quadrants) or near its bottom-left corner (first quadrant)
+  const u = 50, q1 = v === 'coord1', ox = q1 ? 100 : 800, oy = q1 ? 800 : 450, N = 120;
+  const grid = q1 ? `<rect x="${ox}" y="${oy - BIG}" width="${BIG}" height="${BIG}" fill="url(#cgrid)"/>` : full('url(#cgrid)');
+  const ax = q1 ? `M${ox} ${oy}H${ox + BIG}M${ox} ${oy}V${oy - BIG}` : `M${-BIG} ${oy}H${BIG}M${ox} ${-BIG}V${BIG}`;
+  let lab = '';
+  for (let i = q1 ? 1 : -N; i <= N; i++){
+    if (!i) continue;
+    lab += `<text x="${ox + i*u}" y="${oy + 22}" text-anchor="middle">${String(i).replace('-','−')}</text>`;
+    lab += `<text x="${ox - 9}" y="${oy - i*u + 5}" text-anchor="end">${String(i).replace('-','−')}</text>`;
   }
-  for (let y = yt + 20, i; y <= yb; y += u){
-    i = Math.round((oy - y) / u); if (!i || y > yb - 10) continue;
-    lab += `<text x="${ox - 9}" y="${y + 5}" text-anchor="end">${String(i).replace('-','−')}</text>`;
-  }
-  const ax = `M${xl} ${oy}H${xr}M${ox} ${yt}V${yb}`;
-  const arrows = `M${xr} ${oy}l-14 -7v14zM${ox} ${yt}l-7 14h14z` + (q1 ? '' : `M${xl} ${oy}l14 -7v14zM${ox} ${yb}l-7 -14h14z`);
-  return `<path d="${grid}" stroke="#dde3eb" stroke-width="1.5" fill="none"/>`+
-         `<path d="${ax}" stroke="#4b5563" stroke-width="2.5"/><path d="${arrows}" fill="#4b5563"/>`+
-         `<g font-size="15" fill="#4b5563" font-weight="600">${lab}<text x="${ox - 9}" y="${oy + 22}" text-anchor="end">0</text></g>`+
-         `<g font-size="22" font-style="italic" font-weight="700" fill="#374151"><text x="${xr - 16}" y="${oy - 14}" text-anchor="end">x</text><text x="${ox + 14}" y="${yt + 22}">y</text></g>`;
+  return grid + `<path d="${ax}" stroke="#4b5563" stroke-width="2.5"/>`+
+         `<g font-size="15" fill="#4b5563" font-weight="600">${lab}<text x="${ox - 9}" y="${oy + 22}" text-anchor="end">0</text></g>`;
 }
 function setBg(v, send = true){
   if (!isBg(v)) v = 'dots';
@@ -1650,10 +1792,19 @@ const today = () => new Date().toISOString().slice(0,10);
 async function savePicture(){
   const keep = S.sel; S.sel = new Set(); render();
   const c = svg.cloneNode(true);
-  ['#cursors','#liveInk','#marquee'].forEach(s => { const e = c.querySelector(s); if (e) e.remove(); });
+  ['#cursors','#liveInk','#marquee','#grpLines'].forEach(s => { const e = c.querySelector(s); if (e) e.remove(); });
   c.removeAttribute('class'); c.removeAttribute('style');
   c.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-  c.setAttribute('width', BW); c.setAttribute('height', BH);
+  // the picture shows everything on the board (or the starting area if the board is empty), not just what is on screen
+  const box = contentBox(), pad = 40;
+  const area = box ? { x:box.l - pad, y:box.t - pad, w:box.r - box.l + 2*pad, h:box.b - box.t + 2*pad } : { x:0, y:0, w:BW, h:BH };
+  const k = Math.min(1.5, 4000 / Math.max(area.w, area.h));
+  c.setAttribute('viewBox', `${area.x} ${area.y} ${area.w} ${area.h}`);
+  c.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+  c.setAttribute('width', area.w); c.setAttribute('height', area.h);
+  const paper = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+  paper.setAttribute('x', -BIG); paper.setAttribute('y', -BIG); paper.setAttribute('width', 2*BIG); paper.setAttribute('height', 2*BIG); paper.setAttribute('fill', '#fcfbf7');
+  c.insertBefore(paper, c.querySelector('#bg'));
   const st = document.createElementNS('http://www.w3.org/2000/svg', 'style');
   st.textContent = 'text{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}';
   c.insertBefore(st, c.firstChild);
@@ -1662,7 +1813,7 @@ async function savePicture(){
     const img = new Image();
     img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(c));
     await img.decode();
-    const k = 1.5, cv = document.createElement('canvas'); cv.width = BW*k; cv.height = BH*k;
+    const cv = document.createElement('canvas'); cv.width = Math.round(area.w*k); cv.height = Math.round(area.h*k);
     const g = cv.getContext('2d'); g.fillStyle = '#ffffff'; g.fillRect(0, 0, cv.width, cv.height); g.drawImage(img, 0, 0, cv.width, cv.height);
     cv.toBlob(b => { if (b){ download(b, `edutorium-board-${today()}.png`); toast('Picture saved.'); } else toast('Could not make the picture.'); }, 'image/png');
   } catch(e){ console.warn(e); toast('Could not make the picture.'); }
@@ -1744,7 +1895,9 @@ $('#linkBtn').onclick = async () => {
 $('#helpBtn').onclick = () => openDlg(`<h2>How to use Edutorium Live</h2><div class="help">
   <ul>
     <li><b>Add pieces:</b> drag them from the left onto the board, or click one.</li>
-    <li><b>Move:</b> drag a piece. Drag on empty space to select several. Shift-click adds to a selection.</li>
+    <li><b>Move:</b> drag a piece. Shift + drag on empty space selects several; Shift-click adds to a selection.</li>
+    <li><b>More space:</b> the board has no edges. Drag empty space to move around; zoom with the − / + buttons, Ctrl + mouse wheel, or two fingers. The % button goes back to the start; the corners button shows everything.</li>
+    <li><b>Group:</b> select several pieces and choose <b>Group</b> (Ctrl+G). Click any of them to move, copy or turn them all. <b>Ungroup</b> (Ctrl+Shift+G) separates them.</li>
     <li><b>Remove:</b> drag pieces back to the left, or press Delete.</li>
     <li><b>Flip:</b> double-click a counter or algebra tile to turn it over.</li>
     <li><b>Base ten:</b> select a ten, hundred or thousand and choose <b>Break into 10</b>. Select 10 of the same block and choose <b>Group 10</b>.</li>
@@ -2014,7 +2167,7 @@ window.addEventListener('beforeunload', () => { if (NET.peer) try { NET.peer.des
 /* ---------- start up ---------- */
 async function boot(){
   if (params.get('embed') === '1') document.body.classList.add('embed');
-  buildTray(); syncToggles(); undoBtns(); netStatus();
+  buildTray(); syncToggles(); undoBtns(); netStatus(); setView(homeView());
   const h = location.hash.match(/[#&]b=([^&]+)/);
   let started = false;
   if (h){
