@@ -115,6 +115,17 @@ dialog .btn{border-color:var(--line)}
 .two .btn{justify-content:center;margin-top:auto}
 .row{display:flex;gap:8px}
 .row>*{flex:1}
+.bgs{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:6px}
+.bgopt{display:flex;flex-direction:column;gap:6px;padding:6px;border:2px solid var(--line);border-radius:12px;background:var(--chip);cursor:pointer;font-size:12.5px;font-weight:600}
+.bgopt svg{width:100%;height:auto;border-radius:6px}
+.bgopt:hover{border-color:var(--accent)}
+.bgopt.on{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 30%,transparent)}
+.saves{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px}
+.saveopt{display:flex;flex-direction:column;align-items:flex-start;gap:4px;text-align:left;padding:14px;border:1px solid var(--line);border-radius:12px;background:var(--chip);cursor:pointer}
+.saveopt:hover{border-color:var(--accent)}
+.saveopt b{font-size:14px}
+.saveopt span{font-size:12.5px;color:var(--muted)}
+@media (max-width:520px){.bgs{grid-template-columns:repeat(2,1fr)}.saves{grid-template-columns:1fr}}
 .code{font:700 38px/1.1 ui-monospace,"Cascadia Mono",Consolas,monospace;letter-spacing:.14em;text-align:center;padding:14px;background:var(--chip);border-radius:12px;margin:8px 0 14px}
 .people{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 0}
 .person{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:99px;background:var(--chip);font-size:13px;font-weight:600}
@@ -163,6 +174,8 @@ body.embed .brand,body.embed #helpBtn{display:none}
   <div class="spacer"></div>
   <button class="btn solo" id="resetBtn" hidden title="Go back to the board this link started with"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10a6 6 0 101.8-4.3"/><path d="M4 3.5v3.2h3.2"/></svg><span class="lbl">Reset</span></button>
   <button class="btn solo" id="clearBtn" title="Clear the board"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h12M8 6V4h4v2M5.5 6l.8 10h7.4l.8-10"/></svg><span class="lbl">Clear</span></button>
+  <button class="btn solo" id="bgBtn" title="Change the board background"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="3" y="3" width="14" height="14" rx="2"/><path d="M3 7.7h14M3 12.3h14M7.7 3v14M12.3 3v14" stroke-opacity=".55"/></svg><span class="lbl">Background</span></button>
+  <button class="btn solo" id="saveBtn" title="Save your work"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3v9.5M6 8.8l4 4 4-4M4 16h12"/></svg><span class="lbl">Save</span></button>
   <button class="btn solo" id="linkBtn" title="Copy a link that opens this board"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M8.5 11.5l3-3"/><path d="M9.5 6l1.4-1.4a3 3 0 014.3 4.3L13.8 10.3M10.5 14l-1.4 1.4a3 3 0 01-4.3-4.3L6.2 9.7"/></svg><span class="lbl">Board link</span></button>
   <button class="btn primary" id="togetherBtn" title="Work on the same board with a partner"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="7" cy="7" r="2.6"/><circle cx="14" cy="8" r="2.1"/><path d="M2.5 16c.6-2.8 2.4-4.2 4.5-4.2s3.9 1.4 4.5 4.2M12 12.3c.6-.3 1.3-.5 2-.5 1.8 0 3.2 1.2 3.6 3.6"/></svg><span id="togetherLbl">Work together</span></button>
   <button class="btn solo" id="helpBtn" title="How to use" aria-label="How to use"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="10" cy="10" r="7.2"/><path d="M8 8a2 2 0 113 1.7c-.7.4-1 .9-1 1.6"/><circle cx="10" cy="14.2" r=".6" fill="currentColor"/></svg></button>
@@ -175,6 +188,9 @@ body.embed .brand,body.embed #helpBtn{display:none}
     <svg id="board" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid meet" aria-label="Math board">
       <defs>
         <pattern id="dots" width="40" height="40" patternUnits="userSpaceOnUse"><circle cx="20" cy="20" r="1.7" fill="#d3d9e2"/></pattern>
+        <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#dce2ea" stroke-width="1.5"/></pattern>
+        <!-- isometric dots 30 apart: pattern blocks (side 60) sit exactly on them -->
+        <pattern id="iso" width="30" height="51.9615" patternUnits="userSpaceOnUse"><g fill="#bcc4d0"><circle cx="0" cy="0" r="2.2"/><circle cx="30" cy="0" r="2.2"/><circle cx="15" cy="25.98" r="2.2"/><circle cx="0" cy="51.9615" r="2.2"/><circle cx="30" cy="51.9615" r="2.2"/></g></pattern>
         <!-- Taptinita seeds: same colours as code/taptinita/web/style.css -->
         <radialGradient id="gCorn" cx=".4" cy=".7" r=".8"><stop offset=".14" stop-color="#fff8c4"/><stop offset=".45" stop-color="#ffd21f"/><stop offset="1" stop-color="#b77c00"/></radialGradient>
         <radialGradient id="gPea" cx=".35" cy=".3" r=".85"><stop offset=".12" stop-color="#e6ffb8"/><stop offset=".42" stop-color="#6fe83a"/><stop offset="1" stop-color="#1d6b10"/></radialGradient>
@@ -182,7 +198,7 @@ body.embed .brand,body.embed #helpBtn{display:none}
         <radialGradient id="gLupin" cx=".38" cy=".32" r=".85"><stop offset=".16" stop-color="#fffdf4"/><stop offset=".48" stop-color="#f1e2b8"/><stop offset="1" stop-color="#a88a4e"/></radialGradient>
       </defs>
       <rect class="paper" x="0" y="0" width="1600" height="900" rx="14" fill="#fcfbf7"/>
-      <rect x="0" y="0" width="1600" height="900" rx="14" fill="url(#dots)" pointer-events="none"/>
+      <g id="bg" pointer-events="none"></g>
       <g id="items"></g>
       <path id="liveInk" fill="none" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
       <rect id="marquee" fill="rgba(37,99,235,.08)" stroke="#2563eb" stroke-width="2" stroke-dasharray="8 6" visibility="hidden" pointer-events="none"/>
@@ -191,6 +207,7 @@ body.embed .brand,body.embed #helpBtn{display:none}
   </section>
 </main>
 
+<input type="file" id="fileIn" accept=".json,application/json" hidden>
 <dialog id="dlg"><form method="dialog" id="dlgForm"></form></dialog>
 <div id="toast" role="status" aria-live="polite"></div>
 
@@ -220,7 +237,7 @@ const ME = { id: 'u' + rid(), name: (ls.get('mml-name') || '').slice(0,20),
              color: PEOPLE_COLORS[Math.floor(Math.random()*PEOPLE_COLORS.length)] };
 
 const S = { items:{}, sel:new Set(), tool:'select', ink:'#1f2937',
-            labels: ls.get('mml-names') === '1', values: ls.get('mml-values') === '1', start:null };
+            labels: ls.get('mml-names') === '1', bg:null, startBg:'dots', values: ls.get('mml-values') === '1', start:null };
 
 /* ---------- colour helpers ---------- */
 function mix(a, b, t){
@@ -274,7 +291,7 @@ function size(it){
   const k = it.k;
   if (BT[k]) return BT[k];
   if (AL[k]) return AL[k];
-  if (SEED[k]) return SEED[k];
+  if (SEED[k]){ const s = SEED[k], sc = it.sc || 1; return { w:s.w*sc, h:s.h*sc }; }
   switch (k) {
     case 'tap': return { w:220*TAP, h:310*TAP };
     case 'f':   return { w:FW/it.n, h:FH };
@@ -336,8 +353,8 @@ function inner(it, L = S.labels){
     const s = SEED[k], { w, h } = s, R = s.rad.map(([a,b]) => [a*w, b*h]);
     const d = `M${R[0][0]} 0H${w-R[1][0]}A${R[1][0]} ${R[1][1]} 0 0 1 ${w} ${R[1][1]}V${h-R[2][1]}A${R[2][0]} ${R[2][1]} 0 0 1 ${w-R[2][0]} ${h}`+
               `H${R[3][0]}A${R[3][0]} ${R[3][1]} 0 0 1 0 ${h-R[3][1]}V${R[0][1]}A${R[0][0]} ${R[0][1]} 0 0 1 ${R[0][0]} 0Z`;
-    return `<path d="${d}" fill="url(#${s.g})" stroke="${s.e}" stroke-opacity=".55" stroke-width="1.2"/>` +
-           (k === 'lupin' ? `<circle cx="${w*.78}" cy="${h/2}" r="3" fill="#6b5530"/>` : '');
+    return `<g transform="scale(${it.sc || 1})"><path d="${d}" fill="url(#${s.g})" stroke="${s.e}" stroke-opacity=".55" stroke-width="1.2"/>` +
+           (k === 'lupin' ? `<circle cx="${w*.78}" cy="${h/2}" r="3" fill="#6b5530"/>` : '') + `</g>`;
   }
   if (k === 'f'){
     const n = it.n, w = FW/n, c = FC[n], tc = inkOn(c);
@@ -422,6 +439,8 @@ function clean(o){
     case 'nl':  it.min = Math.round(num(o.min,0,-1000,1000)); it.max = Math.round(num(o.max,10,it.min+1,it.min+240));
                 it.p = PARTS.includes(+o.p) ? +o.p : 1; it.w = num(o.w,1200,400,1560); break;
     case 'txt': it.text = String(o.text || '').slice(0,80); it.fs = [24,32,48,64].includes(+o.fs) ? +o.fs : 32; it.c = col(o.c); break;
+    case 'corn': case 'pea': case 'bean': case 'lupin':
+      if (o.sc && +o.sc < 1) it.sc = num(o.sc,1,.2,1); break;
     case 'ink': it.c = col(o.c); it.sw = num(o.sw,4,1,30);
                 it.pts = Array.isArray(o.pts) ? o.pts.slice(0,8000).map(v => num(v,0,-5000,5000)) : [0,0];
                 if (it.pts.length % 2) it.pts.pop();
@@ -455,12 +474,12 @@ const GROUPS = [
   { id:'rods', name:'Number rods', wall:10*RU, tiles:[1,2,3,4,5,6,7,8,9,10].map(n => ['rod'+n, 'Rod ' + n]) },
   { id:'counters', name:'Counters', tiles:[['ctr','Positive'],['ctrn','Negative'],['tf','Ten frame']] },
   { id:'algebra', name:'Algebra tiles', tiles:[['a1','1'],['ax','x'],['ax2','x²'],['a1n','−1'],['axn','−x'],['ax2n','−x²']] },
-  { id:'shapes', name:'Shapes', tiles:Object.keys(SH).map(s => ['sh-'+s, SH[s].n]) },
+  { id:'patternblocks', name:'Pattern Blocks', tiles:Object.keys(SH).map(s => ['sh-'+s, SH[s].n]) },
   { id:'lines', name:'Number lines', tiles:[['nl','0 to 10'],['nlf','Fourths'],['nl20','−10 to 10']] }
 ];
 
 function buildTray(){
-  const want = (params.get('tray') || '').split(',').map(s => s.trim()).filter(Boolean);
+  const want = (params.get('tray') || '').split(',').map(s => s.trim() === 'shapes' ? 'patternblocks' : s.trim()).filter(Boolean);
   let html = '';
   for (const g of GROUPS){
     if (want.length && !want.includes(g.id)) continue;
@@ -670,8 +689,9 @@ function doAction(a){
   if (!list.length) return;
   const free = list.filter(i => !i.lock);
   if (a === 'rotL' || a === 'rotR'){
-    const step = free.every(i => i.k === 'sh') ? 30 : 90;
-    act(() => put(free.map(i => ({ ...i, r:(((i.r||0) + (a === 'rotL' ? -step : step)) % 360 + 360) % 360 }))));
+    const turn = free.filter(i => i.k !== 'tap');   // the Taptinita stays upright so its seeds stay in their pozos
+    const step = turn.every(i => i.k === 'sh') ? 30 : 90;
+    act(() => put(turn.map(i => ({ ...i, r:(((i.r||0) + (a === 'rotL' ? -step : step)) % 360 + 360) % 360 }))));
   } else if (a === 'flip'){
     act(() => put(free.filter(i => i.k === 'ctr' || AL[i.k]).map(i => { const n = { ...i }; if (n.neg) delete n.neg; else n.neg = true; return n; })));
   } else if (a === 'break') breakApart(free);
@@ -683,7 +703,7 @@ function doAction(a){
     else { let z = zTop(); act(() => put(list.map(i => ({ ...i, z:z++ })))); }
   } else if (a === 'dup'){
     let z = zTop();
-    const copies = list.map(i => { const n = structuredClone(i); n.id = newId(); n.x += 30; n.y += 30; n.z = MAT.has(n.k) ? zBottom() - 1 : z++; delete n.lock; return n; });
+    const copies = withSeeds(list).map(i => { const n = structuredClone(i); n.id = newId(); n.x += 30; n.y += 30; n.z = MAT.has(n.k) ? zBottom() - 1 : z++; delete n.lock; return n; });
     act(() => put(copies));
     S.sel = new Set(copies.map(c => c.id)); dirty();
   } else if (a === 'lock'){
@@ -692,8 +712,56 @@ function doAction(a){
     toast(lockIt ? 'Locked. Locked pieces stay put and are kept when the board is cleared.' : 'Unlocked.');
   } else if (a === 'del'){
     if (free.length < list.length) toast('Locked pieces were kept. Unlock them first to delete.');
-    act(() => drop(free.map(i => i.id)));
+    act(() => { drop(withSeeds(free).filter(i => !i.lock).map(i => i.id)); relayout(); });
   }
+}
+
+/* ---------- Taptinita: seeds belong to the Taptinita they sit on ---------- */
+const SLOT_R = 19*TAP, SLOT_MAX = 9, SEED_ORDER = { lupin:0, bean:1, pea:2, corn:3 };
+const tapSlots = t => [...TAP_POZOS, TAP_KILLA].map(([px,py]) => [t.x + px*TAP, t.y + py*TAP]);
+const centerOf = it => { const { w, h } = size(it); return [it.x + w/2, it.y + h/2]; };
+function onTap(t, s){
+  const [cx, cy] = centerOf(s), lx = (cx - t.x)/TAP, ly = (cy - t.y)/TAP;
+  return Math.hypot(lx - 110, ly - 66) < 64 || Math.hypot(lx - 110, ly - 208) < 102;
+}
+function tapUnder(s){ return Object.values(S.items).find(t => t.k === 'tap' && onTap(t, s)) || null; }
+// a list plus every seed sitting on a Taptinita in it
+function withSeeds(list){
+  const out = [...list], have = new Set(list.map(i => i.id));
+  for (const t of list) if (t.k === 'tap')
+    for (const s of Object.values(S.items)) if (SEED[s.k] && !have.has(s.id) && onTap(t, s)){ out.push(s); have.add(s.id); }
+  return out;
+}
+// seeds sharing a pozo (or the Killa) all shrink by the same amount and spread out so they all show
+function slotLayout(n){
+  if (n <= 1) return { sc:1, offs:[[0,0]] };
+  if (n === 2) return { sc:.6, offs:[[-13,0],[13,0]] };
+  if (n === 3) return { sc:.52, offs:[[0,-13],[-13,9],[13,9]] };
+  if (n === 4) return { sc:.46, offs:[[-12,-11],[12,-11],[-12,11],[12,11]] };
+  const offs = []; for (let i=0;i<n;i++) offs.push([((i % 3) - 1)*19, (Math.floor(i/3) - 1)*17]);
+  return { sc:.36, offs };
+}
+function relayout(){
+  const seeds = Object.values(S.items).filter(s => SEED[s.k]), placed = new Set(), changed = [];
+  const fit = (s, cx, cy, sc) => {
+    const W = SEED[s.k].w*sc, H = SEED[s.k].h*sc, x = Math.round((cx - W/2)*10)/10, y = Math.round((cy - H/2)*10)/10;
+    if (Math.abs(s.x - x) < .05 && Math.abs(s.y - y) < .05 && (s.sc || 1) === sc) return;
+    const n = { ...s, x, y }; if (sc === 1) delete n.sc; else n.sc = sc;
+    changed.push(n);
+  };
+  for (const t of Object.values(S.items)){
+    if (t.k !== 'tap') continue;
+    for (const [cx, cy] of tapSlots(t)){
+      const inn = seeds.filter(s => !placed.has(s.id) && Math.hypot(centerOf(s)[0] - cx, centerOf(s)[1] - cy) < SLOT_R + 4)
+                       .sort((a,b) => SEED_ORDER[a.k] - SEED_ORDER[b.k] || (a.id < b.id ? -1 : 1));
+      if (!inn.length) continue;
+      const L = slotLayout(Math.min(inn.length, SLOT_MAX));
+      inn.forEach((s, i) => { placed.add(s.id); const [dx, dy] = L.offs[Math.min(i, L.offs.length - 1)]; fit(s, cx + dx, cy + dy, L.sc); });
+    }
+  }
+  // seeds that left a pozo grow back to full size
+  for (const s of seeds) if (!placed.has(s.id) && s.sc){ const [cx, cy] = centerOf(s); fit(s, cx, cy, 1); }
+  if (changed.length) put(changed);
 }
 
 function breakApart(list){
@@ -702,10 +770,12 @@ function breakApart(list){
     let z = zTop();
     for (const it of list){
       const low = DOWN[it.k]; if (!low) continue;
-      const b = bbox(it), out = [];
+      const b = bbox(it), out = [], tap = SEED[it.k] ? tapUnder(it) : null;
       for (let i=0;i<10;i++){
         let x, y;
-        if (SEED[it.k]){ const cw = SEED[low].w + 8; x = b.l + (i % 5)*cw; y = b.t + Math.floor(i/5)*(SEED[low].h + 8); }
+        // on a Taptinita, the 10 smaller seeds fill the 9 pozos and the Killa, as in the app
+        if (tap){ const [cx, cy] = tapSlots(tap)[i]; x = cx - SEED[low].w/2; y = cy - SEED[low].h/2; }
+        else if (SEED[it.k]){ const cw = SEED[low].w + 8; x = b.l + (i % 5)*cw; y = b.t + Math.floor(i/5)*(SEED[low].h + 8); }
         else if (it.k === 'b10'){
           const flat = (it.r || 0) % 180 === 90;
           x = b.l + (flat ? i*23 : 0); y = b.t + (flat ? 0 : i*23);
@@ -715,6 +785,7 @@ function breakApart(list){
       }
       drop([it.id]); put(out); made.push(...out.map(o => o.id));
     }
+    relayout();
   });
   S.sel = new Set(made); dirty();
 }
@@ -725,13 +796,15 @@ function groupTen(list){
       const arr = list.filter(i => i.k === k).sort((a,b) => a.y - b.y || a.x - b.x);
       while (arr.length >= 10){
         const ten = arr.splice(0,10);
-        const l = Math.min(...ten.map(t => bbox(t).l)), t = Math.min(...ten.map(t => bbox(t).t));
+        let l = Math.min(...ten.map(t => bbox(t).l)), t = Math.min(...ten.map(t => bbox(t).t));
+        if (SEED[k]){ const [cx, cy] = centerOf(ten[0]); l = cx - SEED[UP[k]].w/2; t = cy - SEED[UP[k]].h/2; }
         drop(ten.map(i => i.id));
         const n = { id:newId(), k:UP[k], x:l, y:t, r:SEED[k] ? Math.round(Math.random()*50 - 25) : 0, z:zTop() };
         put([n]); made.push(n.id);
       }
       made.push(...arr.map(i => i.id));
     }
+    relayout();
   });
   S.sel = new Set(made.filter(id => S.items[id])); dirty();
 }
@@ -863,6 +936,8 @@ function magnet(dx, dy){
 }
 
 function startMove(p, ids, pre, fromTray){
+  // a Taptinita carries the seeds sitting on it
+  ids = withSeeds(ids.map(id => S.items[id])).filter(i => !i.lock).map(i => i.id);
   D = { mode:'move', pre, start:p, ids, fromTray, moved:!!fromTray,
         orig:new Map(ids.map(id => [id, { x:S.items[id].x, y:S.items[id].y }])) };
 }
@@ -991,7 +1066,7 @@ function endPointer(e){
   if (d.mode === 'move'){
     if (!d.moved) return;
     if (e && e.type === 'pointerup' && overTray(e)){
-      drop(d.ids); commit(d.pre); return;
+      drop(d.ids); relayout(); commit(d.pre); return;
     }
     const changed = [];
     for (const id of d.ids){
@@ -1004,7 +1079,7 @@ function endPointer(e){
       changed.push(it);
     }
     pend.clear(); clearTimeout(pendT); pendT = 0;
-    put(changed); commit(d.pre);
+    put(changed); relayout(); commit(d.pre);
   }
 }
 window.addEventListener('pointerup', endPointer);
@@ -1020,18 +1095,17 @@ function snapToFrame(c){
   }
 }
 
-// a seed dropped near a pozo or the Killa settles into it (one seed of each kind per hole)
+// a seed dropped near a pozo or the Killa settles into it (up to 9 seeds per hole; relayout() arranges them)
 function snapToTap(s){
-  const { w, h } = SEED[s.k], cx = s.x + w/2, cy = s.y + h/2;
-  let best = null, bd = 19*TAP + 10;
-  for (const id in S.items){
-    const t = S.items[id];
-    if (t.k !== 'tap' || (t.r || 0) % 360) continue;
-    for (const [px, py] of [...TAP_POZOS, TAP_KILLA]){
-      const x = t.x + px*TAP, y = t.y + py*TAP, dd = Math.hypot(cx - x, cy - y);
+  const [cx, cy] = centerOf(s), { w, h } = size(s);
+  let best = null, bd = SLOT_R + 12;
+  for (const t of Object.values(S.items)){
+    if (t.k !== 'tap') continue;
+    for (const [x, y] of tapSlots(t)){
+      const dd = Math.hypot(cx - x, cy - y);
       if (dd >= bd) continue;
-      const taken = Object.values(S.items).some(o => o.id !== s.id && o.k === s.k && Math.hypot(o.x + w/2 - x, o.y + h/2 - y) < 6);
-      if (!taken){ bd = dd; best = [x, y]; }
+      const here = Object.values(S.items).filter(o => o.id !== s.id && SEED[o.k] && Math.hypot(centerOf(o)[0] - x, centerOf(o)[1] - y) < SLOT_R + 4).length;
+      if (here < SLOT_MAX){ bd = dd; best = [x, y]; }
     }
   }
   if (best){ s.x = best[0] - w/2; s.y = best[1] - h/2; }
@@ -1093,11 +1167,119 @@ $('#clearBtn').onclick = () => openDlg(`<h2>Clear the board?</h2><p>This removes
   () => act(() => drop(Object.values(S.items).filter(i => !i.lock).map(i => i.id))));
 $('#resetBtn').onclick = () => openDlg(`<h2>Reset the board?</h2><p>The board goes back to how this link started${NET.conns.size ? ', for everyone' : ''}. You can undo it.</p>
   <menu><button class="btn" value="cancel">Cancel</button><button class="btn primary" value="ok">Reset</button></menu>`,
-  () => act(() => {
-    const keep = new Set(S.start.map(i => i.id));
+  () => { replaceBoard(S.start.map(i => structuredClone(i))); setBg(S.startBg); });
+
+// swap the whole board for another one (undoable, and shared with a partner)
+function replaceBoard(items){
+  act(() => {
+    const keep = new Set(items.map(i => i.id));
     drop(Object.keys(S.items).filter(id => !keep.has(id)));
-    put(S.start.map(i => structuredClone(i)));
-  }));
+    put(items);
+  });
+}
+
+/* ---------- backgrounds (part of the board: saved in links and files, shared with partners) ---------- */
+const BGS = [['blank','Blank'],['dots','Dots'],['grid','Square grid'],['coord','Coordinate grid'],['coord1','First quadrant grid'],['iso','Isometric dots']];
+const isBg = v => BGS.some(b => b[0] === v);
+function bgSVG(v){
+  const full = f => `<rect width="${BW}" height="${BH}" rx="14" fill="${f}"/>`;
+  if (v === 'dots') return full('url(#dots)');
+  if (v === 'grid') return full('url(#grid)');
+  if (v === 'iso')  return full('url(#iso)');
+  if (v !== 'coord' && v !== 'coord1') return '';
+  const u = 50, q1 = v === 'coord1';
+  const ox = q1 ? 100 : 800, oy = q1 ? 800 : 450;
+  const xl = q1 ? ox : 0, xr = q1 ? 1560 : BW, yt = q1 ? 40 : 0, yb = q1 ? oy : BH;
+  let grid = '', lab = '';
+  for (let x = ox; x <= xr; x += u) grid += `M${x} ${yt}V${yb}`;
+  for (let x = ox - u; x >= xl; x -= u) grid += `M${x} ${yt}V${yb}`;
+  for (let y = oy; y >= yt; y -= u) grid += `M${xl} ${y}H${xr}`;
+  for (let y = oy + u; y <= yb; y += u) grid += `M${xl} ${y}H${xr}`;
+  for (let x = xl, i; x <= xr - 20; x += u){
+    i = Math.round((x - ox) / u); if (!i || x < xl + 10) continue;
+    lab += `<text x="${x}" y="${oy + 22}" text-anchor="middle">${String(i).replace('-','−')}</text>`;
+  }
+  for (let y = yt + 20, i; y <= yb; y += u){
+    i = Math.round((oy - y) / u); if (!i || y > yb - 10) continue;
+    lab += `<text x="${ox - 9}" y="${y + 5}" text-anchor="end">${String(i).replace('-','−')}</text>`;
+  }
+  const ax = `M${xl} ${oy}H${xr}M${ox} ${yt}V${yb}`;
+  const arrows = `M${xr} ${oy}l-14 -7v14zM${ox} ${yt}l-7 14h14z` + (q1 ? '' : `M${xl} ${oy}l14 -7v14zM${ox} ${yb}l-7 -14h14z`);
+  return `<path d="${grid}" stroke="#dde3eb" stroke-width="1.5" fill="none"/>`+
+         `<path d="${ax}" stroke="#4b5563" stroke-width="2.5"/><path d="${arrows}" fill="#4b5563"/>`+
+         `<g font-size="15" fill="#4b5563" font-weight="600">${lab}<text x="${ox - 9}" y="${oy + 22}" text-anchor="end">0</text></g>`+
+         `<g font-size="22" font-style="italic" font-weight="700" fill="#374151"><text x="${xr - 16}" y="${oy - 14}" text-anchor="end">x</text><text x="${ox + 14}" y="${yt + 22}">y</text></g>`;
+}
+function setBg(v, send = true){
+  if (!isBg(v)) v = 'dots';
+  const changed = S.bg !== v;
+  S.bg = v; $('#bg').innerHTML = bgSVG(v); ls.set('mml-bg', v);
+  if (send && changed) bcast({ t:'bg', v });
+}
+$('#bgBtn').onclick = () => openDlg(`<h2>Background</h2><p>Your partner sees the same background, and it is saved with board links and board files.</p>
+  <div class="bgs">${BGS.map(([v,n]) => `<button class="bgopt${v === S.bg ? ' on' : ''}" value="${v}" aria-pressed="${v === S.bg}">`+
+    `<svg viewBox="0 0 ${BW} ${BH}" aria-hidden="true"><rect width="${BW}" height="${BH}" rx="14" fill="#fcfbf7"/>${bgSVG(v)}</svg><span>${n}</span></button>`).join('')}</div>
+  <menu><button class="btn" value="cancel">Close</button></menu>`,
+  v => { if (isBg(v)) setBg(v); });
+
+/* ---------- saving work ---------- */
+function download(blob, name){
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+const today = () => new Date().toISOString().slice(0,10);
+async function savePicture(){
+  const keep = S.sel; S.sel = new Set(); render();
+  const c = svg.cloneNode(true);
+  ['#cursors','#liveInk','#marquee'].forEach(s => { const e = c.querySelector(s); if (e) e.remove(); });
+  c.removeAttribute('class'); c.removeAttribute('style');
+  c.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+  c.setAttribute('width', BW); c.setAttribute('height', BH);
+  const st = document.createElementNS('http://www.w3.org/2000/svg', 'style');
+  st.textContent = 'text{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}';
+  c.insertBefore(st, c.firstChild);
+  S.sel = keep; render();
+  try {
+    const img = new Image();
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(c));
+    await img.decode();
+    const k = 1.5, cv = document.createElement('canvas'); cv.width = BW*k; cv.height = BH*k;
+    const g = cv.getContext('2d'); g.fillStyle = '#ffffff'; g.fillRect(0, 0, cv.width, cv.height); g.drawImage(img, 0, 0, cv.width, cv.height);
+    cv.toBlob(b => { if (b){ download(b, `edutorium-board-${today()}.png`); toast('Picture saved.'); } else toast('Could not make the picture.'); }, 'image/png');
+  } catch(e){ console.warn(e); toast('Could not make the picture.'); }
+}
+function saveFile(){
+  const json = JSON.stringify({ app:'edutorium-live', v:1, bg:S.bg, items:compactItems() });
+  download(new Blob([json], { type:'application/json' }), `edutorium-board-${today()}.json`);
+  toast('Board file saved. Use Save → Open a board file to keep working on it.');
+}
+$('#fileIn').addEventListener('change', async e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  try {
+    const o = JSON.parse(await f.text());
+    if (!o || o.app !== 'edutorium-live' || !Array.isArray(o.items)) throw new Error('not a board');
+    replaceBoard(o.items.slice(0,3000).map(clean).filter(Boolean));
+    setBg(o.bg);
+    toast('Board opened.');
+  } catch(err){ toast('That file is not an Edutorium Live board.'); }
+});
+$('#saveBtn').onclick = () => openDlg(`<h2>Save your work</h2>
+  <div class="saves">
+    <button class="saveopt" value="png"><b>Save as a picture</b><span>A PNG image of the board, to hand in or put in a slide.</span></button>
+    <button class="saveopt" value="file"><b>Save a board file</b><span>Keep working later: open the file again with the button below.</span></button>
+    <button class="saveopt" value="open"><b>Open a board file</b><span>Load a board you saved before. It replaces this board${NET.conns.size ? ' for everyone' : ''}.</span></button>
+    <button class="saveopt" value="link"><b>Copy a board link</b><span>A link that opens this board, for slides or Google Classroom.</span></button>
+  </div>
+  <p style="margin-top:12px;font-size:13px">This browser also keeps your board while you work, so it is still here if you close the tab.</p>
+  <menu><button class="btn" value="cancel">Close</button></menu>`,
+  v => {
+    if (v === 'png') savePicture();
+    else if (v === 'file') saveFile();
+    else if (v === 'open') $('#fileIn').click();
+    else if (v === 'link') setTimeout(() => $('#linkBtn').click(), 0);
+  });
 
 /* board links: the whole board is packed into the part of the link after # */
 const b64u = bytes => { let s = ''; bytes.forEach(b => s += String.fromCharCode(b)); return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); };
@@ -1110,7 +1292,7 @@ function compactItems(){
   });
 }
 async function encodeBoard(){
-  const json = new TextEncoder().encode(JSON.stringify({ v:1, items:compactItems() }));
+  const json = new TextEncoder().encode(JSON.stringify({ v:1, bg:S.bg, items:compactItems() }));
   if (window.CompressionStream){
     const buf = await new Response(new Blob([json]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer();
     return 'z' + b64u(new Uint8Array(buf));
@@ -1124,7 +1306,7 @@ async function decodeBoard(s){
     bytes = new Uint8Array(buf);
   }
   const o = JSON.parse(new TextDecoder().decode(bytes));
-  return (o.items || []).map(clean).filter(Boolean);
+  return { items:(o.items || []).slice(0,3000).map(clean).filter(Boolean), bg:isBg(o.bg) ? o.bg : 'dots' };
 }
 function baseUrl(keepJoin){
   const u = new URL(location.href); u.hash = '';
@@ -1148,7 +1330,9 @@ $('#helpBtn').onclick = () => openDlg(`<h2>How to use Edutorium Live</h2><div cl
     <li><b>Remove:</b> drag pieces back to the left, or press Delete.</li>
     <li><b>Flip:</b> double-click a counter or algebra tile to turn it over.</li>
     <li><b>Base ten:</b> select a ten, hundred or thousand and choose <b>Break into 10</b>. Select 10 of the same block and choose <b>Group 10</b>.</li>
-    <li><b>Taptinita:</b> drop corn, peas, beans and lupins into the pozos or the red Killa and they settle in. Select 10 of one seed and choose <b>Group 10</b> to trade up, or select a seed and choose <b>Break into 10</b>.</li>
+    <li><b>Taptinita:</b> drop corn, peas, beans and lupins into the pozos or the red Killa and they settle in. Several seeds can share a pozo; they shrink to fit. Moving the Taptinita moves its seeds too. Select 10 of one seed and choose <b>Group 10</b> to trade up, or select a seed and choose <b>Break into 10</b>.</li>
+    <li><b>Background:</b> choose blank, dots, a square grid, a coordinate grid or isometric dots.</li>
+    <li><b>Save:</b> save a picture to hand in, or save a board file and open it again later.</li>
     <li><b>Edit:</b> double-click a number line or text to change it.</li>
     <li><b>Names:</b> pieces start with no numbers or names. Turn on Names to show them.</li>
     <li><b>Values:</b> turn on Values to see what the selected pieces are worth.</li>
@@ -1206,7 +1390,7 @@ async function startHost(){
     wire(c);
     c.on('open', () => {
       c.send({ t:'hello', id:ME.id, name:myName(), color:ME.color });
-      c.send({ t:'state', items:S.items });
+      c.send({ t:'state', items:S.items, bg:S.bg });
       for (const [id, q] of Object.entries(peers)) c.send({ t:'hello', id, name:q.name, color:q.color });
     });
   });
@@ -1281,6 +1465,7 @@ function onMsg(m, c){
     case 'state':
       if (NET.host || !m.items || typeof m.items !== 'object') return;
       loadAll(Object.values(m.items)); undoS = []; redoS = []; undoBtns();
+      setBg(m.bg, false);
       toast('Connected. You are both on the same board now.');
       return;
     case 'hello': case 'cur': {
@@ -1299,6 +1484,10 @@ function onMsg(m, c){
       m = { t:m.t, id, name:peers[id].name, color:peers[id].color, x:peers[id].x, y:peers[id].y };
       break;
     }
+    case 'bg':
+      if (!isBg(m.v)) return;
+      setBg(m.v, false); m = { t:'bg', v:m.v };
+      break;
     case 'bye': {
       const id = String(m.id || '');
       if (peers[id]){ toast(`${peers[id].name} left.`); delete peers[id]; renderCursors(); netStatus(); }
@@ -1336,6 +1525,8 @@ function showTogether(){
   dlg._together = true;
   const names = [`<span class="person"><span class="dot" style="color:${ME.color}"></span>${esc(myName())} (you)</span>`]
     .concat(Object.values(peers).map(p => `<span class="person"><span class="dot" style="color:${p.color}"></span>${esc(p.name)}</span>`)).join('');
+  const nameRow = `<label for="myName2">Your name</label><div class="row"><input id="myName2" name="name" maxlength="20" value="${esc(ME.name)}" placeholder="For example: Ana" autocomplete="off">`+
+                  `<button class="btn" value="rename" style="flex:0 0 auto">Save name</button></div>`;
   if (NET.state === 'off'){
     openDlg(`<h2>Work together</h2>
       <p>Two or more people move pieces on the same board at the same time, each on their own device. No accounts needed.</p>
@@ -1363,15 +1554,38 @@ function showTogether(){
       <label for="joinLink">Or send this link</label><div class="row"><input id="joinLink" readonly value="${esc(link.toString())}"><button type="button" class="btn" data-copy="#joinLink" style="flex:0 0 auto">Copy</button></div>`}
       <div class="people">${names}</div>
       <p style="margin-top:10px;font-size:13px">${Object.keys(peers).length ? 'Connected. Everyone sees every move.' : 'Waiting for a partner to join…'} Keep this tab open while you work.</p>
+      ${nameRow}
       <menu><button class="btn" value="leave">Stop sharing</button><button class="btn primary" value="cancel">Done</button></menu>`,
-      v => { if (v === 'leave') leave(); });
+      connectedHandler);
   } else {
     openDlg(`<h2>${NET.state === 'live' ? 'Working together' : 'Joining…'}</h2>
       <p>${NET.state === 'live' ? 'You are on a shared board. Everyone sees every move.' : `Connecting to the board ${NET.code}…`}</p>
-      <div class="people">${names}</div>
+      <div class="people">${names}</div>${nameRow}
       <menu><button class="btn" value="leave">Leave</button><button class="btn primary" value="cancel">Done</button></menu>`,
-      v => { if (v === 'leave') leave(); });
+      connectedHandler);
   }
+}
+// while connected, anyone can change the name their partner sees
+function connectedHandler(v, fd){
+  if (v === 'leave'){ leave(); return; }
+  if (v === 'rename'){
+    ME.name = String(fd.get('name') || '').trim().slice(0,20); ls.set('mml-name', ME.name);
+    bcast({ t:'hello', id:ME.id, name:myName(), color:ME.color });
+    toast('Name saved.'); setTimeout(showTogether, 0); return false;
+  }
+}
+// a join link (…?join=CODE) asks for the person's name first
+function joinPrompt(code){
+  dlg._together = true;
+  openDlg(`<h2>Join a shared board</h2>
+    <p>You are joining the board <b>${esc(code)}</b>. Your partner's board will replace the one on your screen.</p>
+    <label for="joinName">Your name</label><input id="joinName" name="name" maxlength="20" value="${esc(ME.name)}" placeholder="For example: Ana" autocomplete="off" autofocus>
+    <menu><button class="btn primary" value="join">Join</button><button class="btn" value="cancel">Not now</button></menu>`,
+    (v, fd) => {
+      if (v !== 'join') return;
+      ME.name = String(fd.get('name') || '').trim().slice(0,20); ls.set('mml-name', ME.name);
+      join(code);
+    });
 }
 $('#togetherBtn').onclick = showTogether;
 dlg.addEventListener('close', () => { dlg._together = false; });
@@ -1385,18 +1599,19 @@ async function boot(){
   let started = false;
   if (h){
     try {
-      const items = await decodeBoard(h[1]);
-      S.start = items.map(i => structuredClone(i));
-      loadAll(items); started = true; $('#resetBtn').hidden = false;
+      const { items, bg } = await decodeBoard(h[1]);
+      S.start = items.map(i => structuredClone(i)); S.startBg = bg;
+      loadAll(items); setBg(bg, false); started = true; $('#resetBtn').hidden = false;
     } catch(e){ toast('That board link could not be opened.'); }
   }
   if (!started){
+    setBg(ls.get('mml-bg'), false);
     try { const saved = JSON.parse(ls.get('mml-board-v1') || '[]'); if (Array.isArray(saved)) loadAll(saved); } catch(e){}
   }
-  const j = params.get('join');
+  const j = String(params.get('join') || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
   if (j){
     const u = baseUrl(false); history.replaceState(null, '', u.toString() + location.hash);
-    join(j);
+    joinPrompt(j);
   }
 }
 boot();
