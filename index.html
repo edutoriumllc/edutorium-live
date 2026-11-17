@@ -78,6 +78,9 @@ main{display:grid;grid-template-columns:224px minmax(0,1fr);min-height:0}
 .tile.wall{min-height:0;padding:3px 4px;align-items:flex-start;background:transparent}
 .tile.wall:hover{background:var(--chip)}
 .tiles.lines{grid-template-columns:1fr;gap:6px}
+.tiles.kak{grid-template-columns:repeat(5,1fr);gap:4px}
+.tile.kkt{min-height:0;padding:5px 0 4px;gap:2px;background:#ffffff;border-color:#e3e6eb;color:#4b5563}
+.tile.kkt:hover{border-color:var(--accent)}
 .hoprow{display:grid;grid-template-columns:1fr 1fr;gap:6px}
 .tile.hopt{min-height:0;padding:6px 4px;background:#fcfbf7;border-color:#e3e6eb;color:#4b5563}
 .tile.hopt:hover{border-color:var(--accent)}
@@ -373,8 +376,30 @@ const PG_FILL = PG_COL[1];
    counted from the bottom) are shaded with cs / rs ("0"/"1" each): columns blue (vertical), rows yellow (horizontal),
    overlap green = the product. brush = what a click inside the rectangle shades: 'v' or 'h'. */
 const AM_S = 300, AM_L = 132, AM_R = 28, AM_T = 46, AM_B = 92, AM_RB = 52, AM_MAXN = 60;
+/* Kaktovik numerals 0–19 (base 20, Iñupiaq): the ones (1–4) are a zig-zag of strokes going down from the top-left
+   (\ , V, \/\ , W); the fives (5, 10, 15) are a zig-zag of 1–3 strokes across the top that ends at the left,
+   where the ones hang down; 0 is a loop. Drawn as strokes in an 80 × 100 box on a small card. */
+const KK_W = 80, KK_H = 124;
+const NO_TURN = new Set(['tap', 'kk']);   // pieces that never rotate
+function kkPath(n){
+  if (!n) return 'M18 32C34 42 48 56 50 72C52 90 44 100 38 100C30 100 25 90 29 78C35 60 52 42 64 30';
+  const a = Math.floor(n / 5), b = n % 5, L = 16, R = 64;
+  let d = '', top = 14;
+  if (a){
+    const step = a === 1 ? 18 : 13, pts = [];
+    for (let k = 0; k <= a; k++) pts.push([(a - k) % 2 ? R : L, 14 + k*step]);   // always ends at the left
+    d = 'M' + pts.map(p => p.join(' ')).join('L');
+    top = pts[a][1];
+  }
+  if (b){
+    const width = [0, 18, 32, 46, 48][b], x0 = a ? L : 40 - width/2, dx = width / b, pts = [];
+    for (let k = 0; k <= b; k++) pts.push([x0 + k*dx, k % 2 ? 100 : top]);
+    d += (a ? 'L' : 'M') + pts.slice(a ? 1 : 0).map(p => p.join(' ')).join('L');
+  }
+  return d;
+}
 const MAT = new Set(['tf','nl','tap']);
-const KINDS = new Set(['b1','b10','b100','b1000','f','rod','a1','ax','ax2','ctr','tf','sh','nl','txt','ink','tap','corn','pea','bean','lupin','xd','pg','am']);
+const KINDS = new Set(['b1','b10','b100','b1000','f','rod','a1','ax','ax2','ctr','tf','sh','nl','txt','ink','tap','corn','pea','bean','lupin','xd','pg','am','kk']);
 
 function size(it){
   const k = it.k;
@@ -385,6 +410,7 @@ function size(it){
     case 'tap': return { w:220*TAP, h:310*TAP };
     case 'xd':  return { w:2*XD_PAD + it.n*XD_BOX + (it.n - 1)*XD_GAP, h:XD_HEAD + XD_BOX + XD_FOOT };
     case 'am':  return { w:AM_L + AM_S + AM_R, h:AM_T + AM_S + AM_B + AM_RB };
+    case 'kk':  return { w:KK_W, h:KK_H };
     case 'pg':  return { w:Math.max(2*PG_P + it.cols*PG_C, it.two ? 300 : 190), h:(it.two ? PG_HEAD : 0) + 2*PG_P + it.rows*PG_C + PG_RB - PG_P };
     case 'f':   return { w:FW/it.n, h:FH };
     case 'rod': return { w:it.n*RU, h:RU };
@@ -431,6 +457,11 @@ function inner(it, L = S.labels){
            `<path d="M200 40L240 0V200L200 240Z" fill="${side}" stroke="${d}" stroke-width="1.4" stroke-linejoin="round"/>`+
            `<rect x="0" y="40" width="200" height="200" fill="${c}" stroke="${d}" stroke-width="1.4"/>`+
            `<path d="${segs(f)}${segs(t)}${segs(s)}" stroke="${d}" stroke-opacity=".4"/>` + btName(100, 152, '1,000', 34);
+  }
+  if (k === 'kk'){
+    return `<rect x="1" y="1" width="${KK_W - 2}" height="${KK_H - 2}" rx="10" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>`+
+      `<path d="${kkPath(it.n)}" fill="none" stroke="#111827" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>`+
+      (L ? `<text x="${KK_W/2}" y="${KK_H - 6}" font-size="15" font-weight="700" fill="#64748b" text-anchor="middle">${it.n}</text>` : '');
   }
   if (k === 'am'){
     const { w, h } = size(it), ox = AM_L, oy = AM_T + AM_S;            // origin: bottom-left corner
@@ -924,6 +955,7 @@ function clean(o){
                 it.min =Math.round(num(o.min,0,-1000,1000)); it.max = Math.round(num(o.max,10,it.min+1,it.min+240));
                 it.p = PARTS.includes(+o.p) ? +o.p : 1; it.w = num(o.w,1200,400,1560); break;
     case 'txt': it.text = String(o.text || '').slice(0,80); it.fs = [24,32,48,64].includes(+o.fs) ? +o.fs : 32; it.c = col(o.c); break;
+    case 'kk': it.n = Math.round(num(o.n,0,0,19)); it.r = 0; break;   // always upright
     case 'am':
       it.xw = Math.round(num(o.xw,0,0,10)); it.xp = Math.round(num(o.xp,1,1,12));
       it.yw = Math.round(num(o.yw,0,0,10)); it.yp = Math.round(num(o.yp,1,1,12));
@@ -970,6 +1002,7 @@ function tpl(pid){
   if (pid === 'tf') return { k:'tf' };
   if (pid === 'tap' || SEED[pid]) return { k:pid };
   if (pid === 'xd') return { k:'xd', n:3, base:10, d:[[0,0],[0,0],[0,0]] };
+  const kk = pid.match(/^kk(\d+)$/); if (kk) return { k:'kk', n:+kk[1] };
   if (pid === 'am') return { k:'am', xw:0, xp:1, yw:0, yp:1, cs:'', rs:'', brush:'v', show:'frac' };   // starts blank
   if (pid === 'pg100') return { k:'pg', rows:10, cols:10, f:'0'.repeat(100), show:'pct' };
   if (pid === 'pg10') return { k:'pg', rows:10, cols:1, f:'0'.repeat(10), show:'pct' };
@@ -987,6 +1020,7 @@ const GROUPS = [
   { id:'fractions', name:'Fraction bars', wall:FW, tiles:FDEN.map(n => ['f'+n, n===1 ? 'One whole' : 'One ' + ({2:'half',3:'third',4:'fourth',5:'fifth',6:'sixth',8:'eighth',10:'tenth',12:'twelfth'})[n]]) },
   { id:'rods', name:'Number rods', wall:10*RU, tiles:[1,2,3,4,5,6,7,8,9,10].map(n => ['rod'+n, 'Rod ' + n]) },
   { id:'dots', name:'Exploding Dots', xd:true, tiles:[['xd','Dot machine'],['dotp','Dot'],['dotn','Anti-dot']] },
+  { id:'kaktovik', name:'Kaktovik numerals', kak:true, tiles:[...Array(20)].map((_, n) => ['kk' + n, String(n)]) },
   { id:'counters', name:'Counters', tiles:[['ctr','Positive'],['ctrn','Negative'],['tf','Ten frame']] },
   { id:'algebra', name:'Algebra tiles', tiles:[['a1','1'],['ax','x'],['ax2','x²'],['a1n','−1'],['axn','−x'],['ax2n','−x²']] },
   { id:'patternblocks', name:'Pattern Blocks', tiles:Object.keys(SH).map(s => ['sh-'+s, SH[s].n]) },
@@ -1001,6 +1035,18 @@ function buildTray(){
     if (want.length && !want.includes(g.id)) continue;
     html += `<details open><summary>${g.name}</summary><div class="tiles${g.wall?' wall':''}${g.line || g.xd ? ' lines' : ''}">`;
     let hopRow = '';
+    if (g.kak){
+      // 5 across × 4 down: each row adds a five (0–4, 5–9, 10–14, 15–19)
+      html = html.replace(/<div class="tiles">$/, '<div class="tiles kak">');
+      for (const [pid, label] of g.tiles){
+        const n = +pid.slice(2);
+        html += `<button type="button" class="tile kkt" data-pid="${pid}"${S.labels ? ` title="${label}"` : ''} aria-label="Add Kaktovik numeral ${n}">`+
+                `<svg width="30" height="44" viewBox="6 4 68 104" aria-hidden="true"><path d="${kkPath(n)}" fill="none" stroke="#111827" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/></svg>`+
+                (S.labels ? `<span>${n}</span>` : '') + `</button>`;
+      }
+      html += `</div></details>`;
+      continue;
+    }
     for (const [pid, label] of g.tiles){
       if (g.xd){
         if (pid === 'xd'){
@@ -1200,6 +1246,8 @@ function valueText(list){
     if (!g.two) parts.push(`Shaded: ${all(pgCount(g))}`);
     else parts.push(`Blue: ${all(pgBits(g, 1))}   ·   Yellow: ${all(pgBits(g, 2))}   ·   Total shaded: ${all(pgCount(g))}`);
   }
+  const kks = list.filter(i => i.k === 'kk');
+  if (kks.length) parts.push(`Kaktovik: ${kks.map(i => i.n).join(', ')}${kks.length > 1 ? ` (total ${kks.reduce((s, i) => s + i.n, 0)})` : ''}`);
   for (const m of list.filter(i => i.k === 'am')){
     if (!m.xw || !m.yw){ parts.push('Area model: sides not built yet'); continue; }
     const fr = amSegments({ ...m, show:'frac' }), de = amSegments({ ...m, show:'dec' }), pc = amSegments({ ...m, show:'pct' });
@@ -1256,7 +1304,7 @@ function updateBar(){
   const sig = list.map(i => i.id + i.k + (i.neg?1:0) + (i.lock?1:0) + (i.grp || '')).join() + '|' + v;
   if (sig === bar._sig) return;
   bar._sig = sig;
-  const b = [abtn('rotL','rotL','Rotate left'), abtn('rotR','rotR','Rotate right')];
+  const b = list.some(i => !NO_TURN.has(i.k)) ? [abtn('rotL','rotL','Rotate left'), abtn('rotR','rotR','Rotate right')] : [];
   if (list.some(i => i.k === 'ctr' || AL[i.k])) b.push(abtn('flip','flip','Flip'));
   if (list.some(i => DOWN[i.k])) b.push(abtn('break','brk','Break into 10'));
   if (GROUPABLE.some(k => list.filter(i => i.k === k && !i.lock).length >= 10)) b.push(abtn('group','grp','Group 10'));
@@ -1282,7 +1330,8 @@ function doAction(a){
   if (!list.length) return;
   const free = list.filter(i => !i.lock);
   if (a === 'rotL' || a === 'rotR'){
-    const turn = free.filter(i => i.k !== 'tap');   // the Taptinita stays upright so its seeds stay in their pozos
+    // the Taptinita stays upright so its seeds stay in their pozos; Kaktovik numerals stay upright so they read correctly
+    const turn = free.filter(i => !NO_TURN.has(i.k));
     // pattern blocks turn 30° at a time, or 60° on the isometric dots (so their corners land on dots again)
     const dir = a === 'rotL' ? -1 : 1, onlyShapes = turn.every(i => i.k === 'sh'), iso = isoOn() && turn.some(i => i.k === 'sh');
     const step = (onlyShapes ? (iso ? 60 : 30) : 90) * dir, norm = r => ((r % 360) + 360) % 360;
@@ -2338,6 +2387,7 @@ $('#helpBtn').onclick = () => openDlg(`<h2>How to use Edutorium Live</h2><div cl
     <li><b>Isometric dots:</b> with this background, pattern blocks snap their corners onto the dots and rotate 60° at a time so they stay on the dots.</li>
     <li><b>FDP grids</b> (fraction, decimal, percent): click squares on a Hundred grid or Ten strip to shade them, or drag across them. Click the value button underneath to switch between percent, fraction and decimal. <b>Two colours</b> adds Blue and Yellow buttons on the grid (each square is one colour), and the value button shows both amounts. <b>One colour</b> switches back. Double-click the frame (or Edit) to change the size; <b>Clear shading</b> empties it.</li>
     <li><b>Area model</b> (for multiplying): it starts blank. Build each side with the − / + buttons: <b>length</b> (whole units) and <b>split each</b> (parts in each whole), for x along the bottom and y up the left. Click sections of the bottom to shade columns blue and of the left side to shade rows yellow; the overlap turns green and the button shows the multiplication (3 × 4 = 12, 1/2 × 1/4 = 1/8). Inside the rectangle, the Vertical / Horizontal buttons choose what a click shades. Click the button to switch fraction, decimal and percent.</li>
+    <li><b>Kaktovik numerals:</b> drag any numeral from 0 to 19 onto the board. Strokes along the bottom count ones (1–4) and strokes across the top count fives (5, 10, 15). Turn on <b>Names</b> to see each card's value.</li>
     <li><b>Exploding Dots:</b> drag dots and anti-dots into the boxes of a dot machine. Drag a dot one box to the left to explode (10 dots become 1 on the left, or the machine's own rule), one box to the right to unexplode, or off the machine to remove it. A dashed orange box is ready to explode. Double-click the machine to change its boxes, its rule, or fill it with a number.</li>
     <li><b>Background:</b> choose blank, dots, a square grid, a coordinate grid or isometric dots.</li>
     <li><b>Save:</b> save a picture to hand in, or save a board file and open it again later.</li>
