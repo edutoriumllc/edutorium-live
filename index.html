@@ -399,8 +399,14 @@ function abDims(it){
 const MATS = {
   amx: { w:760, h:440, name:'Expression mat' },
   aeq: { w:940, h:620, name:'Equation mat' },
-  apr: { w:760, h:600, name:'Product mat' }
+  apr: { w:760, h:600, name:'Product mat' },
+  avol: { w:740, h:620, name:'Volume mat' }
 };
+/* Volume mat (3D algebra blocks): a small 3D scene. The box is built from the origin (front, bottom, left corner) at
+   (VOL_OX, VOL_OY) on the mat: width along x, depth along y (into the board), height along z. Factor rods lie along
+   their own axis just outside the box (VOL_G away). The mat can be seen in 3D or straight on from the front, top or side. */
+const VOL_OX = 190, VOL_OY = 450, VOL_G = 38;
+const VOL_VIEWS = [['3d','3D'], ['front','Front'], ['top','Top'], ['side','Side']];
 // a mat's size: the Expression mat is stacked (+ on top, − below) or side by side (− left, + right)
 function matSize(it){ return it.k === 'amx' ? (it.lay === 'h' ? { w:760, h:440 } : { w:560, h:680 }) : { w:MATS[it.k].w, h:MATS[it.k].h }; }
 function matRegions(it){
@@ -416,6 +422,7 @@ function matRegions(it){
     return [{ x:14, y:58, w:sw, h:rh, role:'L+' }, { x:14, y:70 + rh, w:sw, h:rh, role:'L-' },
             { x:w/2 + 36, y:58, w:sw, h:rh, role:'R+' }, { x:w/2 + 36, y:70 + rh, w:sw, h:rh, role:'R-' }];
   }
+  if (it.k === 'avol') return [];   // no regions: pieces are placed by the axis corner they are dropped in
   // product mat: factor bands exactly one unit (30) thick along the top and down the left
   return [{ x:52, y:14, w:w - 66, h:30, role:'A' }, { x:14, y:52, w:30, h:h - 66, role:'B' }, { x:52, y:52, w:w - 66, h:h - 66, role:'P' }];
 }
@@ -425,7 +432,7 @@ function matZones(it){
   const { w, h } = MATS.apr, P = matRegions(it)[2];
   return [{ x:P.x - 6, y:-20, w:w - P.x + 6, h:P.y + 18, role:'A' }, { x:-20, y:P.y - 6, w:P.x + 18, h:h - P.y + 6, role:'B' }, { ...P, role:'P' }];
 }
-const NO_TURN = new Set(['tap', 'kk', 'ab', 'amx', 'aeq', 'apr']);   // pieces that never rotate (3D blocks use Turn instead)
+const NO_TURN = new Set(['tap', 'kk', 'ab', 'amx', 'aeq', 'apr', 'avol']);   // pieces that never rotate (3D blocks use Turn instead)
 function kkPath(n){
   if (!n) return 'M18 32C34 42 48 56 50 72C52 90 44 100 38 100C30 100 25 90 29 78C35 60 52 42 64 30';
   const a = Math.floor(n / 5), b = n % 5, L = 16, R = 64;
@@ -443,8 +450,8 @@ function kkPath(n){
   }
   return d;
 }
-const MAT = new Set(['tf','nl','tap','amx','aeq','apr']);
-const KINDS = new Set(['b1','b10','b100','b1000','f','rod','a1','ax','ax2','ctr','tf','sh','nl','txt','ink','tap','corn','pea','bean','lupin','xd','pg','am','kk','ab','amx','aeq','apr']);
+const MAT = new Set(['tf','nl','tap','amx','aeq','apr','avol']);
+const KINDS = new Set(['b1','b10','b100','b1000','f','rod','a1','ax','ax2','ctr','tf','sh','nl','txt','ink','tap','corn','pea','bean','lupin','xd','pg','am','kk','ab','amx','aeq','apr','avol']);
 
 function size(it){
   const k = it.k;
@@ -456,8 +463,14 @@ function size(it){
     case 'xd':  return { w:2*XD_PAD + it.n*XD_BOX + (it.n - 1)*XD_GAP, h:XD_HEAD + XD_BOX + XD_FOOT };
     case 'am':  return { w:AM_L + AM_S + AM_R, h:AM_T + AM_S + AM_B + AM_RB };
     case 'kk':  return { w:KK_W, h:KK_H };
-    case 'ab':  { const [W, Dp, H] = abDims(it), k = Dp*AB_K; return { w:W + k, h:H + k }; }
-    case 'amx': case 'aeq': case 'apr': return matSize(it);
+    case 'ab':  {
+      const [W, Dp, H] = abDims(it), k = Dp*AB_K;
+      if (it.vw === 'front') return { w:W, h:H };    // seen straight on (Volume mat views)
+      if (it.vw === 'top')   return { w:W, h:Dp };
+      if (it.vw === 'side')  return { w:Dp, h:H };
+      return { w:W + k, h:H + k };
+    }
+    case 'amx': case 'aeq': case 'apr': case 'avol': return matSize(it);
     case 'pg':  return { w:Math.max(2*PG_P + it.cols*PG_C, it.two ? 300 : 190), h:(it.two ? PG_HEAD : 0) + 2*PG_P + it.rows*PG_C + PG_RB - PG_P };
     case 'f':   return { w:FW/it.n, h:FH };
     case 'rod': return { w:it.n*RU, h:RU };
@@ -509,6 +522,16 @@ function inner(it, L = S.labels){
     // front face, top face and right side of the block, seen at a slant
     const [W, Dp, H] = abDims(it), q = Dp*AB_K, c = it.neg ? NEG : AB[it.t].c;
     const top = mix(c, '#ffffff', .35), side = mix(c, '#000000', .2), e = mix(c, '#000000', .45);
+    if (it.vw){
+      // seen straight on: just the one face, in that face's shade
+      const { w, h } = size(it), fill = it.vw === 'top' ? top : it.vw === 'side' ? side : c;
+      let s = `<rect x=".8" y=".8" width="${w - 1.6}" height="${h - 1.6}" fill="${fill}" stroke="${e}" stroke-width="1.6"/>`;
+      if (L){
+        const fs = Math.max(9, Math.min(20, w/3, h/1.3)), t = (it.neg ? '−' : '') + AB[it.t].t;
+        s += `<text x="${w/2}" y="${h/2 + fs*0.35}" font-size="${fs}" font-weight="800" font-style="${it.t === '1' ? 'normal' : 'italic'}" fill="${inkOn(fill)}" text-anchor="middle">${t}</text>`;
+      }
+      return s;
+    }
     let s = `<path d="M0 ${q}L${q} 0H${W + q}L${W} ${q}Z" fill="${top}" stroke="${e}" stroke-width="1.6" stroke-linejoin="round"/>`+
             `<path d="M${W} ${q}L${W + q} 0V${H}L${W} ${H + q}Z" fill="${side}" stroke="${e}" stroke-width="1.6" stroke-linejoin="round"/>`+
             `<rect x="0" y="${q}" width="${W}" height="${H}" fill="${c}" stroke="${e}" stroke-width="1.6"/>`;
@@ -518,8 +541,8 @@ function inner(it, L = S.labels){
     }
     return s;
   }
-  if (k === 'amx' || k === 'aeq' || k === 'apr'){
-    const { w, h } = matSize(it), reg = matRegions(it), tint = { '+':'#eaf7ef', '-':'#fdeeee', 'L+':'#eaf7ef', 'L-':'#fdeeee', 'R+':'#eaf7ef', 'R-':'#fdeeee', A:'#f1f5f9', B:'#f1f5f9', P:'#ffffff' };
+  if (k === 'amx' || k === 'aeq' || k === 'apr' || k === 'avol'){
+    const { w, h } = matSize(it), reg = matRegions(it), tint = { '+':'#eaf7ef', '-':'#fdeeee', 'L+':'#eaf7ef', 'L-':'#fdeeee', 'R+':'#eaf7ef', 'R-':'#fdeeee', C:'#f1f5f9', A:'#f1f5f9', B:'#f1f5f9', P:'#ffffff' };
     let s = `<rect x="1" y="1" width="${w - 2}" height="${h - 2}" rx="16" fill="#f8fafc" stroke="#94a3b8" stroke-width="2.5"/>`;
     for (const r of reg) s += `<rect x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" rx="10" fill="${tint[r.role]}" stroke="#cbd5e1" stroke-width="2"/>`;
     const big = (x, y, t, c) => `<text x="${x}" y="${y}" font-size="38" font-weight="800" fill="${c}" text-anchor="middle">${t}</text>`;
@@ -537,6 +560,34 @@ function inner(it, L = S.labels){
       for (const r of reg){
         const plus = r.role.endsWith('+');
         s += `<text x="${r.x + 16}" y="${r.y + 32}" font-size="28" font-weight="800" fill="${plus ? '#15803d' : '#c62828'}" text-anchor="middle">${plus ? '+' : '−'}</text>`;
+      }
+    }
+    if (k === 'avol'){
+      // the axes seen from the chosen view: two drawn straight, the third (in 3D) going back at a slant
+      const ox = VOL_OX, oy = VOL_OY, view = volView(it), top = 70, right = w - 30;
+      const ax = { x:['x','width'], y:['y','depth'], z:['z','height'] };
+      const [hA, vA] = { '3d':['x','z'], front:['x','z'], top:['x','y'], side:['y','z'] }[view];
+      let lines = `M${ox} ${oy}H${right}M${ox} ${oy}V${top}`, labs = '';
+      labs += `<text x="${right}" y="${oy + 18}" text-anchor="end"><tspan font-style="italic" font-weight="800">${ax[hA][0]}</tspan> ${ax[hA][1]}</text>`+
+              `<text x="${ox + 8}" y="${top + 4}"><tspan font-style="italic" font-weight="800">${ax[vA][0]}</tspan> ${ax[vA][1]}</text>`;
+      if (view === '3d'){
+        const dk = 330*AB_K;
+        lines += `M${ox} ${oy}L${ox + dk} ${oy - dk}`;
+        labs += `<text x="${ox + dk + 6}" y="${oy - dk + 4}"><tspan font-style="italic" font-weight="800">y</tspan> depth</text>`;
+      } else {
+        const hid = { front:['y','depth goes into the board'], top:['z','height comes up out of the board'], side:['x','width comes out toward you'] }[view];
+        labs += `<text x="${ox + 8}" y="${oy + 52}" opacity=".8">(<tspan font-style="italic" font-weight="800">${hid[0]}</tspan>: ${hid[1]})</text>`;
+      }
+      s += `<path d="${lines}" stroke="#94a3b8" stroke-width="2" fill="none" stroke-dasharray="7 6"/>`+
+           `<g fill="#64748b" font-size="14" font-weight="600">${labs}</g><circle cx="${ox}" cy="${oy}" r="4" fill="#64748b"/>`;
+      // view buttons, like the view cube in a 3D design program
+      let bx = w - 14 - VOL_VIEWS.length*70;
+      s += `<text x="${bx - 8}" y="35" font-size="13" font-weight="700" fill="#64748b" text-anchor="end">View</text>`;
+      for (const [v, name] of VOL_VIEWS){
+        const on = view === v;
+        s += `<g data-volview="${v}"><rect x="${bx}" y="14" width="64" height="30" rx="8" fill="${on ? '#2563eb' : '#ffffff'}" stroke="${on ? '#2563eb' : '#94a3b8'}" stroke-width="1.5"/>`+
+             `<text x="${bx + 32}" y="34" font-size="14" font-weight="700" fill="${on ? '#ffffff' : '#334155'}" text-anchor="middle">${name}</text></g>`;
+        bx += 70;
       }
     }
     if (k === 'apr') s += `<text x="29" y="38" font-size="24" font-weight="800" fill="#334155" text-anchor="middle">×</text>` +   // small labels at the far ends, out of the way of the pieces
@@ -1042,8 +1093,12 @@ function clean(o){
                 it.p = PARTS.includes(+o.p) ? +o.p : 1; it.w = num(o.w,1200,400,1560); break;
     case 'txt': it.text = String(o.text || '').slice(0,80); it.fs = [24,32,48,64].includes(+o.fs) ? +o.fs : 32; it.c = col(o.c); break;
     case 'kk': it.n = Math.round(num(o.n,0,0,19)); it.r = 0; break;   // always upright
-    case 'ab': it.t = Object.prototype.hasOwnProperty.call(AB, o.t) ? o.t : '1'; it.o = Math.round(num(o.o,0,0,2)); it.r = 0; break;
-    case 'amx': case 'aeq': case 'apr': it.r = 0; if (o.k === 'amx' && o.lay === 'h') it.lay = 'h'; break;
+    case 'ab': it.t = Object.prototype.hasOwnProperty.call(AB, o.t) ? o.t : '1'; it.o = Math.round(num(o.o,0,0,2)); it.r = 0;
+      if (['front','top','side'].includes(o.vw)) it.vw = o.vw;
+      if (['w','d','h','b'].includes(o.vr)) it.vr = o.vr;
+      break;
+    case 'amx': case 'aeq': case 'apr': case 'avol': it.r = 0;
+      if (o.k === 'avol' && VOL_VIEWS.some(v => v[0] === o.view) && o.view !== '3d') it.view = o.view; if (o.k === 'amx' && o.lay === 'h') it.lay = 'h'; break;
     case 'am':
       it.xw = Math.round(num(o.xw,0,0,10)); it.xp = Math.round(num(o.xp,1,1,12));
       it.yw = Math.round(num(o.yw,0,0,10)); it.yp = Math.round(num(o.yp,1,1,12));
@@ -1284,7 +1339,7 @@ function render(){
   const gl = Object.values(boxes).map(b => `<rect x="${b.l - 12}" y="${b.t - 12}" width="${b.r - b.l + 24}" height="${b.b - b.t + 24}" rx="12" fill="none" stroke="#2563eb" stroke-width="2" stroke-dasharray="10 7" vector-effect="non-scaling-stroke"/>`).join('');
   const gEl = $('#grpLines'); if (gEl._v !== gl){ gEl.innerHTML = gl; gEl._v = gl; }
   // the product rectangle's guides only show with Values or Names on, so students build it themselves first
-  const pg = S.values || S.labels ? prodGuides() : '', pEl = $('#guides'); if (pEl._v !== pg){ pEl.innerHTML = pg; pEl._v = pg; }
+  const pg = S.values || S.labels ? prodGuides() + volGuides() : '', pEl = $('#guides'); if (pEl._v !== pg){ pEl.innerHTML = pg; pEl._v = pg; }
   updateBar();
 }
 
@@ -1388,6 +1443,140 @@ function prodGuides(){
   }
   return s;
 }
+/* ---------- volume mat ---------- */
+const rodLen = i => ({ '111':AB_U, 'x11':AB_X, 'y11':AB_Y })[AB[i.t].d] || null;   // rods (1, x, y) measure a side
+const volView = m => VOL_VIEWS.some(v => v[0] === m.view) ? m.view : '3d';
+// board position of a piece whose front-bottom-left corner is at (xx, yy, zz) in the mat's 3D scene, seen from `view`
+function volProject(m, view, [xx, yy, zz], [w, d, h]){
+  const ox = m.x + VOL_OX, oy = m.y + VOL_OY;
+  if (view === 'front') return { x:ox + xx, y:oy - zz - h };
+  if (view === 'top')   return { x:ox + xx, y:oy - yy - d };
+  if (view === 'side')  return { x:ox + yy, y:oy - zz - h };
+  return { x:ox + xx + yy*AB_K, y:oy - zz - yy*AB_K - h - d*AB_K };
+}
+const onMatArea = (m, i) => { const [cx, cy] = centerOf(i), s = matSize(m); return cx >= m.x && cx <= m.x + s.w && cy >= m.y && cy <= m.y + s.h; };
+// which corner around the origin a piece was dropped in says what it is: the box (top right) or a factor rod.
+// Each view puts the three rod axes in different corners.
+const VOL_CORNERS = { '3d':{ BR:'w', TL:'h', BL:'d' }, front:{ BR:'w', TL:'h', BL:'d' }, top:{ BR:'w', TL:'d', BL:'h' }, side:{ BR:'d', TL:'h', BL:'w' } };
+function volZone(m, i){
+  const [cx, cy] = centerOf(i), right = cx >= m.x + VOL_OX - 4, below = cy > m.y + VOL_OY + 4;
+  if (right && !below) return 'b';
+  return VOL_CORNERS[volView(m)][right ? 'BR' : below ? 'BL' : 'TL'];
+}
+// the turn that lays a rod along its axis: w = along x, d = along y (back), h = up z
+function rodTurn(i, role){
+  const L = rodLen(i);
+  for (let o = 0; o < 3; o++){
+    const [w, d, h] = abDims({ ...i, o });
+    if ((role === 'w' && w === L) || (role === 'd' && d === L) || (role === 'h' && h === L)) return o;
+  }
+  return 0;
+}
+// the pieces on one volume mat, sorted into width / depth / height rods and box blocks (moved pieces are re-sorted
+// by where they were dropped; the others keep their job)
+function volState(m, moved = new Set(), claimed = new Set()){
+  const view = volView(m), R = { w:[], d:[], h:[], b:[] };
+  const blocks = Object.values(S.items).filter(i => i.k === 'ab' && !i.lock && !claimed.has(i.id) && onMatArea(m, i));
+  for (const i of blocks){
+    let r = i.vr && !moved.has(i.id) ? i.vr : volZone(m, i);
+    if (r !== 'b' && !rodLen(i)) r = 'b';          // only 1, x and y rods can measure a side
+    R[r].push(i);
+  }
+  const O = [m.x + VOL_OX, m.y + VOL_OY], dist = i => { const [cx, cy] = centerOf(i); return Math.hypot(cx - O[0], cy - O[1]); };
+  for (const k of ['w','d','h']) R[k].sort((a, b) => dist(a) - dist(b) || a.z - b.z);   // nearest the origin first
+  const segs = list => { let t = 0; return list.map(i => { const s = [t, rodLen(i)]; t += rodLen(i); return s; }); };
+  return { view, blocks, R, xs:segs(R.w), ds:segs(R.d), zs:segs(R.h) };
+}
+function volCells(f){
+  const cells = [];
+  for (const [X, W] of f.xs) for (const [Yd, D] of f.ds) for (const [Z, H] of f.zs) cells.push({ X, W, Yd, D, Z, H, item:null });
+  return cells;
+}
+// the turn (0–2) that gives a block exactly this cell's width, depth and height, or null
+function volFit(i, c){
+  for (let o = 0; o < 3; o++){ const [w, d, h] = abDims({ ...i, o }); if (w === c.W && d === c.D && h === c.H) return o; }
+  return null;
+}
+// draw order for a view: farthest first (3D: back, then bottom, then left; front: back first; top: bottom first; side: left first)
+function volPaintKey(view, [xx, yy, zz]){
+  if (view === 'front') return [-yy, zz, xx];
+  if (view === 'top')   return [zz, -yy, xx];
+  if (view === 'side')  return [xx, zz, -yy];
+  return [-yy, zz, xx];
+}
+function volLayout(moved = new Set()){
+  const changed = new Map(), cur = i => changed.get(i.id) || i;
+  const upd = (i, patch) => {
+    const n = { ...cur(i), ...patch };
+    for (const k in patch) if (patch[k] === undefined) delete n[k];
+    if (JSON.stringify(n) !== JSON.stringify(i)) changed.set(i.id, n); else changed.delete(i.id);
+  };
+  const claimed = new Set();
+  for (const m of Object.values(S.items)){
+    if (m.k !== 'avol') continue;
+    const f = volState(m, moved, claimed), view = f.view, vw = view === '3d' ? undefined : view, G = VOL_G, scene = [];
+    f.blocks.forEach(i => claimed.add(i.id));
+    // each rod lies along its own axis, just outside the box, end to end from the origin
+    const putRod = (i, role, pos) => {
+      const o = rodTurn(i, role), dims = abDims({ ...i, o }), p = volProject(m, view, pos, dims);
+      upd(i, { o, r:0, vr:role, vw, x:Math.round(p.x*2)/2, y:Math.round(p.y*2)/2 });
+      scene.push([i, pos]);
+    };
+    f.R.w.forEach((i, n) => putRod(i, 'w', [f.xs[n][0], -G, -G]));
+    f.R.d.forEach((i, n) => putRod(i, 'd', [-G - AB_U - 22, f.ds[n][0], -G - 40]));   // further left and lower, so the height rods don't hide it in 3D
+    f.R.h.forEach((i, n) => putRod(i, 'h', [-G, -G, f.zs[n][0]]));
+    // blocks fill the box: each takes the nearest free cell it fits (turning as needed), resting on the floor or a block
+    const cells = f.xs.length && f.ds.length && f.zs.length ? volCells(f) : [];
+    for (const i of f.R.b.sort((a, b) => a.z - b.z)){   // older blocks keep their places
+      const [pcx, pcy] = centerOf(i);
+      let best = null, bd = 1e12, bo = 0;
+      for (const c of cells){
+        if (c.item) continue;
+        const o = volFit(i, c); if (o === null) continue;
+        const supported = c.Z === 0 || cells.some(q => q.item && q.X === c.X && q.Yd === c.Yd && q.Z + q.H === c.Z);
+        const dims = [c.W, c.D, c.H], p = volProject(m, view, [c.X, c.Yd, c.Z], dims), s = size({ ...i, o, vw });
+        const d = Math.hypot(p.x + s.w/2 - pcx, p.y + s.h/2 - pcy) + (supported ? 0 : 1e6);
+        if (d < bd){ bd = d; best = c; bo = o; }
+      }
+      if (!best){ upd(i, { vr:'b', vw }); continue; }   // no room: it waits on the mat
+      best.item = i;
+      const p = volProject(m, view, [best.X, best.Yd, best.Z], [best.W, best.D, best.H]);
+      upd(i, { o:bo, r:0, vr:'b', vw, x:Math.round(p.x*2)/2, y:Math.round(p.y*2)/2 });
+      scene.push([i, [best.X, best.Yd, best.Z]]);
+    }
+    // draw order: reuse the pieces' own z values, farthest first
+    const ordered = scene.sort((a, b) => { const ka = volPaintKey(view, a[1]), kb = volPaintKey(view, b[1]); return ka[0] - kb[0] || ka[1] - kb[1] || ka[2] - kb[2]; }).map(s => s[0]);
+    const zs = ordered.map(i => cur(i).z).sort((a, b) => a - b);
+    ordered.forEach((i, n) => upd(i, { z:zs[n] }));
+  }
+  // blocks taken off a volume mat go back to looking solid
+  for (const i of Object.values(S.items)) if (i.k === 'ab' && (i.vr || i.vw) && !claimed.has(i.id)){
+    const [cx, cy] = centerOf(i), n = { ...i }; delete n.vr; delete n.vw;
+    const { w, h } = size(n); upd(i, { vr:undefined, vw:undefined, x:Math.round(cx - w/2), y:Math.round(cy - h/2) });
+  }
+  if (changed.size) put([...changed.values()]);
+}
+// outline of the box once every cell holds a block (only drawn with Values or Names on): a wireframe in 3D, a rectangle in the flat views
+function volGuides(){
+  let s = '';
+  for (const m of Object.values(S.items)){
+    if (m.k !== 'avol') continue;
+    const f = volState(m); if (!f.xs.length || !f.ds.length || !f.zs.length) continue;
+    const view = f.view, cells = volCells(f);
+    const full = cells.every(c => {
+      const p = volProject(m, view, [c.X, c.Yd, c.Z], [c.W, c.D, c.H]);
+      return f.R.b.some(i => { const [w, d, h] = abDims(i); return Math.abs(i.x - p.x) < 1 && Math.abs(i.y - p.y) < 1 && w === c.W && d === c.D && h === c.H; });
+    });
+    if (!full) continue;
+    const W = f.xs.reduce((t, a) => t + a[1], 0), Dp = f.ds.reduce((t, a) => t + a[1], 0), H = f.zs.reduce((t, a) => t + a[1], 0), q = Dp*AB_K;
+    const x0 = m.x + VOL_OX, y0 = m.y + VOL_OY, line = d => `<path d="${d}" fill="none" stroke="#1f2937" stroke-width="2.5" stroke-linejoin="round"/>`;
+    if (view === 'front') s += line(`M${x0} ${y0}h${W}v${-H}h${-W}Z`);
+    else if (view === 'top') s += line(`M${x0} ${y0}h${W}v${-Dp}h${-W}Z`);
+    else if (view === 'side') s += line(`M${x0} ${y0}h${Dp}v${-H}h${-Dp}Z`);
+    else s += line(`M${x0} ${y0}H${x0 + W}V${y0 - H}H${x0}Z M${x0} ${y0 - H}L${x0 + q} ${y0 - H - q}H${x0 + W + q}L${x0 + W} ${y0 - H} M${x0 + W + q} ${y0 - H - q}V${y0 - q}L${x0 + W} ${y0}`);
+  }
+  return s;
+}
 function matText(m){
   const reg = Object.fromEntries(matZones(m).map(r => [r.role, onRegion(m, r)]));
   if (m.k === 'amx'){
@@ -1404,6 +1593,7 @@ function matText(m){
     const full = `${L.text} = ${R.text}`, simple = `${L.net} = ${R.net}`;
     return `Equation mat: ${full}${full === simple ? '' : `  →  ${simple}`}`;
   }
+  if (m.k === 'avol'){ const f = volState(m); return `Volume mat: (${polyStr(polyOf(f.R.w))}) × (${polyStr(polyOf(f.R.d))}) × (${polyStr(polyOf(f.R.h))}) = ${polyStr(polyOf(f.R.b))}`; }
   return `Product mat: (${polyStr(polyOf(reg.A))}) × (${polyStr(polyOf(reg.B))}) = ${polyStr(polyOf(reg.P))}`;
 }
 
@@ -1623,7 +1813,7 @@ function doAction(a){
     toast(lockIt ? 'Locked. Locked pieces stay put and are kept when the board is cleared.' : 'Unlocked.');
   } else if (a === 'del'){
     if (free.length < list.length) toast('Locked pieces were kept. Unlock them first to delete.');
-    act(() => { drop(withSeeds(free).filter(i => !i.lock).map(i => i.id)); relayout(); prodLayout(); });
+    act(() => { drop(withSeeds(free).filter(i => !i.lock).map(i => i.id)); relayout(); prodLayout(); volLayout(); });
   }
 }
 
@@ -2036,7 +2226,8 @@ svg.addEventListener('pointerdown', e => {
   }
   if (it){
     const now = performance.now(), cellEl = it.k === 'pg' ? e.target.closest('[data-cell]') : null;
-    const amEl = it.k === 'am' ? e.target.closest('[data-amcol],[data-amrow],[data-amcell],[data-ambrush],[data-amstep]') : null;
+    const amEl = it.k === 'am' ? e.target.closest('[data-amcol],[data-amrow],[data-amcell],[data-ambrush],[data-amstep]')
+               : it.k === 'avol' ? e.target.closest('[data-volview]') : null;   // (no double-click on these buttons)
     if (now - lastTap.t < 380 && lastTap.id === it.id && !cellEl && !amEl){   // quick taps on squares or strips just shade them
       const hi = lastTap.hop; lastTap = { t:0, id:null };
       if (it.k === 'nl' && hi !== null && hi === hopIdx && !it.lock) editHop(it, hi); else dbl(it);
@@ -2050,6 +2241,14 @@ svg.addEventListener('pointerdown', e => {
       S.sel = new Set([it.id]); e.preventDefault();
       D = { mode:'paint', id:it.id, bit, set:(+it.f[i]) !== bit, pre:begin() };
       pgPaint(i);
+      return;
+    }
+    const viewEl = it.k === 'avol' && e.target.closest('[data-volview]');
+    if (viewEl){
+      // a view button on the Volume mat: see the same box in 3D or straight on
+      e.preventDefault();
+      const v = viewEl.dataset.volview;
+      act(() => { const n = { ...it }; if (v === '3d') delete n.view; else n.view = v; put([n]); volLayout(); });
       return;
     }
     if (amEl && !it.lock){
@@ -2328,7 +2527,7 @@ function endPointer(e){
   if (d.mode === 'move'){
     if (!d.moved){ if (d.pgBtn) pgCycle(d.pgBtn); return; }
     if (e && e.type === 'pointerup' && overTray(e)){
-      drop(d.ids); relayout(); prodLayout(); commit(d.pre); return;
+      drop(d.ids); relayout(); prodLayout(); volLayout(); commit(d.pre); return;
     }
     const changed = [];
     for (const id of d.ids){
@@ -2343,7 +2542,9 @@ function endPointer(e){
       changed.push(it);
     }
     pend.clear(); clearTimeout(pendT); pendT = 0;
-    put(changed); relayout(); prodLayout(); commit(d.pre);
+    // pieces carried along with a Volume mat keep their jobs; pieces dragged on their own are re-sorted by where they landed
+    const carried = d.ids.some(id => S.items[id] && S.items[id].k === 'avol');
+    put(changed); relayout(); prodLayout(); volLayout(new Set(carried ? [] : d.ids)); commit(d.pre);
   }
 }
 window.addEventListener('pointerup', endPointer);
@@ -2638,6 +2839,7 @@ $('#helpBtn').onclick = () => openDlg(`<h2>How to use Edutorium Live</h2><div cl
     <li><b>Area model</b> (for multiplying): it starts blank. Build each side with the − / + buttons: <b>length</b> (whole units) and <b>split each</b> (parts in each whole), for x along the bottom and y up the left. Click sections of the bottom to shade columns blue and of the left side to shade rows yellow; the overlap turns green and the button shows the multiplication (3 × 4 = 12, 1/2 × 1/4 = 1/8). Inside the rectangle, the Vertical / Horizontal buttons choose what a click shades. Click the button to switch fraction, decimal and percent.</li>
     <li><b>3D algebra blocks:</b> 1, x, y, x², xy, y², x³, x²y, xy², y³. <b>Turn</b> shows a block lying along, standing up or going back; double-click (or Flip) for the negative (red) side; Remove zero pairs cancels a block and its negative.</li>
     <li><b>Algebra mats:</b> an Expression mat (+ and − sides), an Equation mat (left = right) and a Product mat (factors along the top and left, product in the middle), for algebra tiles, 3D blocks and counters. On the Product mat, tiles line up along the top and left, and the tiles in the middle snap into the rectangle they make. Select a mat with <b>Values</b> on to read what is on it.</li>
+    <li><b>Volume mat</b> (3D blocks): the box is built in the corner of the x (width), y (depth) and z (height) axes. Drop a 1, x or y rod in the corner of an axis and it lines up along that axis; blocks dropped above the floor snap into the box, turning to fit and resting on the floor or another block. Use <b>3D / Front / Top / Side</b> on the mat to look at it from different sides. With Values or Names on, a full box gets an outline and Values reads the multiplication.</li>
     <li><b>Kaktovik numerals:</b> drag any numeral from 0 to 19 onto the board. Strokes along the bottom count ones (1–4) and strokes across the top count fives (5, 10, 15). Turn on <b>Names</b> to see each card's value.</li>
     <li><b>Exploding Dots:</b> drag dots and anti-dots into the boxes of a dot machine. Drag a dot one box to the left to explode (10 dots become 1 on the left, or the machine's own rule), one box to the right to unexplode, or off the machine to remove it. A dashed orange box is ready to explode. Double-click the machine to change its boxes, its rule, or fill it with a number.</li>
     <li><b>Background:</b> choose blank, dots, a square grid, a coordinate grid or isometric dots.</li>
