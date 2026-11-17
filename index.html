@@ -235,6 +235,7 @@ body.embed .brand,body.embed #helpBtn{display:none}
       </defs>
       <g id="bg" pointer-events="none"></g>
       <g id="items"></g>
+      <g id="guides" pointer-events="none"></g>
       <g id="grpLines" pointer-events="none"></g>
       <path id="liveInk" fill="none" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
       <rect id="marquee" fill="rgba(37,99,235,.08)" stroke="#2563eb" stroke-width="2" stroke-dasharray="8 6" visibility="hidden" pointer-events="none"/>
@@ -380,7 +381,51 @@ const AM_S = 300, AM_L = 132, AM_R = 28, AM_T = 46, AM_B = 92, AM_RB = 52, AM_MA
    (\ , V, \/\ , W); the fives (5, 10, 15) are a zig-zag of 1–3 strokes across the top that ends at the left,
    where the ones hang down; 0 is a loop. Drawn as strokes in an 80 × 100 box on a small card. */
 const KK_W = 80, KK_H = 124;
-const NO_TURN = new Set(['tap', 'kk']);   // pieces that never rotate
+/* 3D algebra blocks (our own design): d = the block's three sizes as letters (1 = unit, x, y), drawn in an oblique
+   3D view like the thousand cube. o (0–2) = which way it is turned: lying along, standing up, or going back.
+   x and y are deliberately not whole numbers of units. Negative blocks are red, like the algebra tiles. */
+const AB_U = 24, AB_X = 84, AB_Y = 60, AB_K = 0.4;
+const AB = {
+  '1':  { d:'111', t:'1',   c:'#F7C744' }, x:   { d:'x11', t:'x',   c:'#62BF84' }, y:   { d:'y11', t:'y',   c:'#B39DDB' },
+  x2:   { d:'xx1', t:'x²',  c:'#4F95DB' }, xy:  { d:'xy1', t:'xy',  c:'#2DB3C9' }, y2:  { d:'yy1', t:'y²',  c:'#E7609E' },
+  x3:   { d:'xxx', t:'x³',  c:'#3F6FD8' }, x2y: { d:'xxy', t:'x²y', c:'#1F9E8F' }, xy2: { d:'xyy', t:'xy²', c:'#9B6BD9' },
+  y3:   { d:'yyy', t:'y³',  c:'#C2185B' }
+};
+function abDims(it){
+  const s = AB[it.t].d, len = ch => ch === 'x' ? AB_X : ch === 'y' ? AB_Y : AB_U, o = it.o || 0;
+  return [len(s[o % 3]), len(s[(o + 1) % 3]), len(s[(o + 2) % 3])];   // width, depth, height
+}
+/* algebra mats: big background pieces whose regions give pieces on them a meaning */
+const MATS = {
+  amx: { w:760, h:440, name:'Expression mat' },
+  aeq: { w:940, h:620, name:'Equation mat' },
+  apr: { w:760, h:600, name:'Product mat' }
+};
+// a mat's size: the Expression mat is stacked (+ on top, − below) or side by side (− left, + right)
+function matSize(it){ return it.k === 'amx' ? (it.lay === 'h' ? { w:760, h:440 } : { w:560, h:680 }) : { w:MATS[it.k].w, h:MATS[it.k].h }; }
+function matRegions(it){
+  const { w, h } = matSize(it);
+  if (it.k === 'amx'){
+    if (it.lay === 'h') return [{ x:14, y:58, w:w/2 - 21, h:h - 72, role:'-' }, { x:w/2 + 7, y:58, w:w/2 - 21, h:h - 72, role:'+' }];
+    const rh = (h - 42)/2;
+    return [{ x:60, y:14, w:w - 74, h:rh, role:'+' }, { x:60, y:28 + rh, w:w - 74, h:rh, role:'-' }];
+  }
+  if (it.k === 'aeq'){
+    // each side split in two: + on top, − below
+    const sw = w/2 - 50, rh = (h - 58 - 14 - 12)/2;
+    return [{ x:14, y:58, w:sw, h:rh, role:'L+' }, { x:14, y:70 + rh, w:sw, h:rh, role:'L-' },
+            { x:w/2 + 36, y:58, w:sw, h:rh, role:'R+' }, { x:w/2 + 36, y:70 + rh, w:sw, h:rh, role:'R-' }];
+  }
+  // product mat: factor bands exactly one unit (30) thick along the top and down the left
+  return [{ x:52, y:14, w:w - 66, h:30, role:'A' }, { x:14, y:52, w:30, h:h - 66, role:'B' }, { x:52, y:52, w:w - 66, h:h - 66, role:'P' }];
+}
+// where a piece counts as being in a region: the product mat's thin bands accept anything dropped above / left of the product
+function matZones(it){
+  if (it.k !== 'apr') return matRegions(it);
+  const { w, h } = MATS.apr, P = matRegions(it)[2];
+  return [{ x:P.x - 6, y:-20, w:w - P.x + 6, h:P.y + 18, role:'A' }, { x:-20, y:P.y - 6, w:P.x + 18, h:h - P.y + 6, role:'B' }, { ...P, role:'P' }];
+}
+const NO_TURN = new Set(['tap', 'kk', 'ab', 'amx', 'aeq', 'apr']);   // pieces that never rotate (3D blocks use Turn instead)
 function kkPath(n){
   if (!n) return 'M18 32C34 42 48 56 50 72C52 90 44 100 38 100C30 100 25 90 29 78C35 60 52 42 64 30';
   const a = Math.floor(n / 5), b = n % 5, L = 16, R = 64;
@@ -398,8 +443,8 @@ function kkPath(n){
   }
   return d;
 }
-const MAT = new Set(['tf','nl','tap']);
-const KINDS = new Set(['b1','b10','b100','b1000','f','rod','a1','ax','ax2','ctr','tf','sh','nl','txt','ink','tap','corn','pea','bean','lupin','xd','pg','am','kk']);
+const MAT = new Set(['tf','nl','tap','amx','aeq','apr']);
+const KINDS = new Set(['b1','b10','b100','b1000','f','rod','a1','ax','ax2','ctr','tf','sh','nl','txt','ink','tap','corn','pea','bean','lupin','xd','pg','am','kk','ab','amx','aeq','apr']);
 
 function size(it){
   const k = it.k;
@@ -411,6 +456,8 @@ function size(it){
     case 'xd':  return { w:2*XD_PAD + it.n*XD_BOX + (it.n - 1)*XD_GAP, h:XD_HEAD + XD_BOX + XD_FOOT };
     case 'am':  return { w:AM_L + AM_S + AM_R, h:AM_T + AM_S + AM_B + AM_RB };
     case 'kk':  return { w:KK_W, h:KK_H };
+    case 'ab':  { const [W, Dp, H] = abDims(it), k = Dp*AB_K; return { w:W + k, h:H + k }; }
+    case 'amx': case 'aeq': case 'apr': return matSize(it);
     case 'pg':  return { w:Math.max(2*PG_P + it.cols*PG_C, it.two ? 300 : 190), h:(it.two ? PG_HEAD : 0) + 2*PG_P + it.rows*PG_C + PG_RB - PG_P };
     case 'f':   return { w:FW/it.n, h:FH };
     case 'rod': return { w:it.n*RU, h:RU };
@@ -457,6 +504,45 @@ function inner(it, L = S.labels){
            `<path d="M200 40L240 0V200L200 240Z" fill="${side}" stroke="${d}" stroke-width="1.4" stroke-linejoin="round"/>`+
            `<rect x="0" y="40" width="200" height="200" fill="${c}" stroke="${d}" stroke-width="1.4"/>`+
            `<path d="${segs(f)}${segs(t)}${segs(s)}" stroke="${d}" stroke-opacity=".4"/>` + btName(100, 152, '1,000', 34);
+  }
+  if (k === 'ab'){
+    // front face, top face and right side of the block, seen at a slant
+    const [W, Dp, H] = abDims(it), q = Dp*AB_K, c = it.neg ? NEG : AB[it.t].c;
+    const top = mix(c, '#ffffff', .35), side = mix(c, '#000000', .2), e = mix(c, '#000000', .45);
+    let s = `<path d="M0 ${q}L${q} 0H${W + q}L${W} ${q}Z" fill="${top}" stroke="${e}" stroke-width="1.6" stroke-linejoin="round"/>`+
+            `<path d="M${W} ${q}L${W + q} 0V${H}L${W} ${H + q}Z" fill="${side}" stroke="${e}" stroke-width="1.6" stroke-linejoin="round"/>`+
+            `<rect x="0" y="${q}" width="${W}" height="${H}" fill="${c}" stroke="${e}" stroke-width="1.6"/>`;
+    if (L){
+      const fs = Math.max(9, Math.min(20, W/3, H/1.3)), t = (it.neg ? '−' : '') + AB[it.t].t;
+      s += `<text x="${W/2}" y="${q + H/2 + fs*0.35}" font-size="${fs}" font-weight="800" font-style="${it.t === '1' ? 'normal' : 'italic'}" fill="${inkOn(c)}" text-anchor="middle">${t}</text>`;
+    }
+    return s;
+  }
+  if (k === 'amx' || k === 'aeq' || k === 'apr'){
+    const { w, h } = matSize(it), reg = matRegions(it), tint = { '+':'#eaf7ef', '-':'#fdeeee', 'L+':'#eaf7ef', 'L-':'#fdeeee', 'R+':'#eaf7ef', 'R-':'#fdeeee', A:'#f1f5f9', B:'#f1f5f9', P:'#ffffff' };
+    let s = `<rect x="1" y="1" width="${w - 2}" height="${h - 2}" rx="16" fill="#f8fafc" stroke="#94a3b8" stroke-width="2.5"/>`;
+    for (const r of reg) s += `<rect x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" rx="10" fill="${tint[r.role]}" stroke="#cbd5e1" stroke-width="2"/>`;
+    const big = (x, y, t, c) => `<text x="${x}" y="${y}" font-size="38" font-weight="800" fill="${c}" text-anchor="middle">${t}</text>`;
+    if (k === 'amx'){
+      // each sign sits beside (stacked) or above (side by side) its own region
+      for (const r of reg){
+        const sign = r.role === '+' ? '+' : '−', c = r.role === '+' ? '#15803d' : '#c62828';
+        s += it.lay === 'h' ? big(r.x + r.w/2, 44, sign, c) : big(34, r.y + r.h/2 + 13, sign, c);
+      }
+    }
+    if (k === 'aeq'){
+      s += big(w/2, h/2 + 14, '=', '#334155') +
+        `<g font-size="18" font-weight="700" fill="#475569" text-anchor="middle"><text x="${w/4 + 4}" y="38">Left side</text><text x="${3*w/4 - 4}" y="38">Right side</text></g>`;
+      // a small + or − in the corner of each half
+      for (const r of reg){
+        const plus = r.role.endsWith('+');
+        s += `<text x="${r.x + 16}" y="${r.y + 32}" font-size="28" font-weight="800" fill="${plus ? '#15803d' : '#c62828'}" text-anchor="middle">${plus ? '+' : '−'}</text>`;
+      }
+    }
+    if (k === 'apr') s += `<text x="29" y="38" font-size="24" font-weight="800" fill="#334155" text-anchor="middle">×</text>` +   // small labels at the far ends, out of the way of the pieces
+      `<g font-size="12" font-weight="700" fill="#64748b"><text x="${w - 22}" y="33" text-anchor="end">factor</text>`+
+      `<text transform="translate(33 ${h - 22}) rotate(-90)">factor</text><text x="${w - 26}" y="${h - 26}" text-anchor="end">product</text></g>`;
+    return s;
   }
   if (k === 'kk'){
     return `<rect x="1" y="1" width="${KK_W - 2}" height="${KK_H - 2}" rx="10" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>`+
@@ -944,7 +1030,7 @@ function clean(o){
   const it = { id, k:o.k, x:num(o.x,0,-BIG,BIG), y:num(o.y,0,-BIG,BIG), r:num(o.r,0,-720,720), z:num(o.z,0,-1e7,1e7) };
   if (o.lock) it.lock = true;
   if (typeof o.grp === 'string' && /^[\w-]{1,24}$/.test(o.grp)) it.grp = o.grp;
-  if (o.neg && (o.k === 'ctr' || AL[o.k])) it.neg = true;
+  if (o.neg && (o.k === 'ctr' || AL[o.k] || o.k === 'ab')) it.neg = true;
   switch (o.k){
     case 'f':   it.n = FDEN.includes(+o.n) ? +o.n : 1; break;
     case 'rod': it.n = Math.round(num(o.n,1,1,10)); break;
@@ -956,6 +1042,8 @@ function clean(o){
                 it.p = PARTS.includes(+o.p) ? +o.p : 1; it.w = num(o.w,1200,400,1560); break;
     case 'txt': it.text = String(o.text || '').slice(0,80); it.fs = [24,32,48,64].includes(+o.fs) ? +o.fs : 32; it.c = col(o.c); break;
     case 'kk': it.n = Math.round(num(o.n,0,0,19)); it.r = 0; break;   // always upright
+    case 'ab': it.t = Object.prototype.hasOwnProperty.call(AB, o.t) ? o.t : '1'; it.o = Math.round(num(o.o,0,0,2)); it.r = 0; break;
+    case 'amx': case 'aeq': case 'apr': it.r = 0; if (o.k === 'amx' && o.lay === 'h') it.lay = 'h'; break;
     case 'am':
       it.xw = Math.round(num(o.xw,0,0,10)); it.xp = Math.round(num(o.xp,1,1,12));
       it.yw = Math.round(num(o.yw,0,0,10)); it.yp = Math.round(num(o.yp,1,1,12));
@@ -1003,6 +1091,8 @@ function tpl(pid){
   if (pid === 'tap' || SEED[pid]) return { k:pid };
   if (pid === 'xd') return { k:'xd', n:3, base:10, d:[[0,0],[0,0],[0,0]] };
   const kk = pid.match(/^kk(\d+)$/); if (kk) return { k:'kk', n:+kk[1] };
+  if (pid.startsWith('ab-')) return { k:'ab', t:pid.slice(3), o:0 };
+  if (MATS[pid]) return { k:pid };
   if (pid === 'am') return { k:'am', xw:0, xp:1, yw:0, yp:1, cs:'', rs:'', brush:'v', show:'frac' };   // starts blank
   if (pid === 'pg100') return { k:'pg', rows:10, cols:10, f:'0'.repeat(100), show:'pct' };
   if (pid === 'pg10') return { k:'pg', rows:10, cols:1, f:'0'.repeat(10), show:'pct' };
@@ -1023,6 +1113,8 @@ const GROUPS = [
   { id:'kaktovik', name:'Kaktovik numerals', kak:true, tiles:[...Array(20)].map((_, n) => ['kk' + n, String(n)]) },
   { id:'counters', name:'Counters', tiles:[['ctr','Positive'],['ctrn','Negative'],['tf','Ten frame']] },
   { id:'algebra', name:'Algebra tiles', tiles:[['a1','1'],['ax','x'],['ax2','x²'],['a1n','−1'],['axn','−x'],['ax2n','−x²']] },
+  { id:'blocks3d', name:'3D algebra blocks', tiles:Object.keys(AB).map(t => ['ab-' + t, AB[t].t]) },
+  { id:'mats', name:'Algebra mats', tiles:Object.keys(MATS).map(m => [m, MATS[m].name]) },
   { id:'patternblocks', name:'Pattern Blocks', tiles:Object.keys(SH).map(s => ['sh-'+s, SH[s].n]) },
   { id:'lines', name:'Number lines', line:true, tiles:[['nl','Intervals'],['nlo','Open number line'],['hopp','+ hop'],['hopm','− hop']] }
 ];
@@ -1191,10 +1283,130 @@ function render(){
   }
   const gl = Object.values(boxes).map(b => `<rect x="${b.l - 12}" y="${b.t - 12}" width="${b.r - b.l + 24}" height="${b.b - b.t + 24}" rx="12" fill="none" stroke="#2563eb" stroke-width="2" stroke-dasharray="10 7" vector-effect="non-scaling-stroke"/>`).join('');
   const gEl = $('#grpLines'); if (gEl._v !== gl){ gEl.innerHTML = gl; gEl._v = gl; }
+  // the product rectangle's guides only show with Values or Names on, so students build it themselves first
+  const pg = S.values || S.labels ? prodGuides() : '', pEl = $('#guides'); if (pEl._v !== pg){ pEl.innerHTML = pg; pEl._v = pg; }
   updateBar();
 }
 
 /* ---------- values of a selection ---------- */
+/* expressions from algebra pieces: tiles (1, x, x²), 3D blocks and counters (±1); a negative piece counts −1 */
+const TERM_ORDER = ['x³','x²y','xy²','y³','x²','xy','y²','x','y','1'];
+function pieceTerm(i){
+  if (AL[i.k]) return { a1:'1', ax:'x', ax2:'x²' }[i.k];
+  if (i.k === 'ab') return AB[i.t].t;
+  if (i.k === 'ctr') return '1';
+  return null;
+}
+function polyOf(list, sign = 1){
+  const co = {};
+  for (const i of list){ const t = pieceTerm(i); if (t) co[t] = (co[t] || 0) + (i.neg ? -1 : 1)*sign; }
+  return co;
+}
+function polyAdd(a, b){ const c = { ...a }; for (const t in b) c[t] = (c[t] || 0) + b[t]; return c; }
+function polyStr(co){
+  let e = '';
+  for (const t of TERM_ORDER){
+    const v = co[t]; if (!v) continue;
+    const mag = Math.abs(v), body = t === '1' ? String(mag) : (mag === 1 ? t : mag + t);
+    e += e ? (v < 0 ? ' − ' : ' + ') + body : (v < 0 ? '−' : '') + body;
+  }
+  return e || '0';
+}
+// pieces whose centre is inside one region of a mat
+function onRegion(m, r){
+  return Object.values(S.items).filter(i => {
+    if (i.id === m.id || !pieceTerm(i)) return false;
+    const [cx, cy] = centerOf(i), lx = cx - m.x, ly = cy - m.y;
+    return lx >= r.x && lx <= r.x + r.w && ly >= r.y && ly <= r.y + r.h;
+  });
+}
+/* Product mat: algebra tiles line up so the product is always a rectangle.
+   Factor tiles lie end to end along the top (x tiles turned flat) and down the left, starting at the product's
+   corner; together they mark out cells (top length × left length), and tiles in the product snap into a free cell
+   that fits them exactly (x² in x × x, x in x × 1 turned to fit, 1 in 1 × 1). */
+const PT = { a1:[30,30], ax:[30,110], ax2:[110,110] };   // tile size when not turned
+const tileLen = i => i.k === 'a1' ? 30 : i.k === 'ax' ? 110 : null;
+function inMatRegion(m, r, i){ const [cx, cy] = centerOf(i), lx = cx - m.x, ly = cy - m.y; return lx >= r.x && lx <= r.x + r.w && ly >= r.y && ly <= r.y + r.h; }
+function prodFactors(m){
+  const [A, B, P] = matRegions(m), [ZA, ZB] = matZones(m), tiles = Object.values(S.items).filter(i => PT[i.k]);
+  const top = tiles.filter(i => tileLen(i) && inMatRegion(m, ZA, i)).sort((a, b) => centerOf(a)[0] - centerOf(b)[0] || a.z - b.z);
+  const left = tiles.filter(i => tileLen(i) && inMatRegion(m, ZB, i)).sort((a, b) => centerOf(a)[1] - centerOf(b)[1] || a.z - b.z);
+  let x = P.x, y = P.y; const cols = [], rows = [];
+  for (const i of top){ cols.push([x, tileLen(i)]); x += tileLen(i); }
+  for (const i of left){ rows.push([y, tileLen(i)]); y += tileLen(i); }
+  return { A, B, P, tiles, top, left, cols, rows };
+}
+function prodLayout(){
+  const changed = new Map();
+  const place = (i, x, y, r) => { x = Math.round(x*2)/2; y = Math.round(y*2)/2; if (i.lock) return; if (i.x !== x || i.y !== y || (i.r || 0) !== r) changed.set(i.id, { ...i, x, y, r }); };
+  for (const m of Object.values(S.items)){
+    if (m.k !== 'apr') continue;
+    const { A, B, tiles, top, left, cols, rows } = prodFactors(m);
+    top.forEach((i, n) => {   // centre each tile on its slot; x tiles turned 90° to lie flat
+      const [w, h] = PT[i.k], L = tileLen(i);
+      place(i, m.x + cols[n][0] + L/2 - w/2, m.y + A.y + A.h/2 - h/2, i.k === 'ax' ? 90 : 0);
+    });
+    left.forEach((i, n) => {
+      const [w, h] = PT[i.k], L = tileLen(i);
+      place(i, m.x + B.x + B.w/2 - w/2, m.y + rows[n][0] + L/2 - h/2, 0);
+    });
+    if (!cols.length || !rows.length) continue;
+    const cells = [];
+    for (const [cx, cw] of cols) for (const [cy, ch] of rows) cells.push({ x:cx, y:cy, w:cw, h:ch, used:false });
+    // older tiles keep their cells; the tile just dropped (highest) takes the nearest free one that fits
+    const prod = tiles.filter(i => inMatRegion(m, matRegions(m)[2], i) && !top.includes(i) && !left.includes(i)).sort((a, b) => a.z - b.z);
+    for (const i of prod){
+      const [w0, h0] = PT[i.k], [pcx, pcy] = centerOf(i);
+      let best = null, bd = 1e9, rot = 0;
+      for (const c of cells){
+        if (c.used) continue;
+        const r = c.w === w0 && c.h === h0 ? 0 : (c.w === h0 && c.h === w0 ? 90 : null);
+        if (r === null) continue;
+        const d = Math.hypot(m.x + c.x + c.w/2 - pcx, m.y + c.y + c.h/2 - pcy);
+        if (d < bd){ bd = d; best = c; rot = r; }
+      }
+      if (best){ best.used = true; place(i, m.x + best.x + best.w/2 - w0/2, m.y + best.y + best.h/2 - h0/2, rot); }
+    }
+  }
+  if (changed.size) put([...changed.values()]);
+}
+// the outline of the product rectangle, drawn only once every cell is filled (empty cells are never drawn)
+function prodGuides(){
+  let s = '';
+  for (const m of Object.values(S.items)){
+    if (m.k !== 'apr') continue;
+    const { cols, rows, tiles, top, left } = prodFactors(m);
+    if (!cols.length || !rows.length) continue;
+    const prod = tiles.filter(i => !top.includes(i) && !left.includes(i));
+    const filled = cols.every(([cx, cw]) => rows.every(([cy, ch]) => prod.some(i => {
+      const [px, py] = centerOf(i);
+      return Math.abs(px - (m.x + cx + cw/2)) < 1 && Math.abs(py - (m.y + cy + ch/2)) < 1;
+    })));
+    if (!filled) continue;
+    const x0 = m.x + cols[0][0], y0 = m.y + rows[0][0], W = cols.reduce((t, c) => t + c[1], 0), H = rows.reduce((t, r) => t + r[1], 0);
+    s += `<rect x="${x0}" y="${y0}" width="${W}" height="${H}" fill="none" stroke="#334155" stroke-width="2.5"/>`;
+  }
+  return s;
+}
+function matText(m){
+  const reg = Object.fromEntries(matZones(m).map(r => [r.role, onRegion(m, r)]));
+  if (m.k === 'amx'){
+    const plus = polyOf(reg['+']), minus = polyOf(reg['-']);
+    return `Expression mat: (${polyStr(plus)}) − (${polyStr(minus)}) = ${polyStr(polyAdd(plus, polyOf(reg['-'], -1)))}`;
+  }
+  if (m.k === 'aeq'){
+    // each side is (+ half) − (− half)
+    const side = s => {
+      const p = polyOf(reg[s + '+']), n = polyOf(reg[s + '-']), net = polyStr(polyAdd(p, polyOf(reg[s + '-'], -1)));
+      return { text: Object.keys(n).some(t => n[t]) ? `(${polyStr(p)}) − (${polyStr(n)})` : polyStr(p), net };
+    };
+    const L = side('L'), R = side('R');
+    const full = `${L.text} = ${R.text}`, simple = `${L.net} = ${R.net}`;
+    return `Equation mat: ${full}${full === simple ? '' : `  →  ${simple}`}`;
+  }
+  return `Product mat: (${polyStr(polyOf(reg.A))}) × (${polyStr(polyOf(reg.B))}) = ${polyStr(polyOf(reg.P))}`;
+}
+
 function fracStr(n, d){
   if (!n) return '0';
   const g = gcd(n, d); n /= g; d /= g;
@@ -1224,18 +1436,9 @@ function valueText(list){
   if (fr.length) parts.push(`Fraction bars: ${fracStr(fr.reduce((s,i) => s + 120/i.n, 0), 120)}`);
   const rods = list.filter(i => i.k === 'rod');
   if (rods.length) parts.push(`Rods: ${rods.reduce((s,i) => s + i.n, 0)} long`);
-  const al = list.filter(i => AL[i.k]);
-  if (al.length){
-    const co = { ax2:0, ax:0, a1:0 };
-    al.forEach(i => co[i.k] += i.neg ? -1 : 1);
-    let e = '';
-    for (const [k, sym] of [['ax2','x²'],['ax','x'],['a1','']]){
-      const v = co[k]; if (!v) continue;
-      const mag = Math.abs(v), body = (mag === 1 && sym) ? sym : mag + sym;
-      e += e ? (v < 0 ? ' − ' : ' + ') + body : (v < 0 ? '−' : '') + body;
-    }
-    parts.push(`Algebra tiles: ${e || '0'}`);
-  }
+  const al = list.filter(i => AL[i.k] || i.k === 'ab');
+  if (al.length) parts.push(`Algebra: ${polyStr(polyOf(al))}`);
+  for (const m of list.filter(i => MATS[i.k])) parts.push(matText(m));
   const ct = list.filter(i => i.k === 'ctr');
   if (ct.length){
     const n = ct.filter(i => i.neg).length, p = ct.length - n, v = p - n;
@@ -1279,6 +1482,7 @@ const IC = {
   pg2:'<circle cx="8" cy="10" r="5" fill="#4F95DB" stroke="none"/><circle cx="12" cy="10" r="5" fill="#F7C744" stroke="none" opacity=".85"/><circle cx="8" cy="10" r="5"/><circle cx="12" cy="10" r="5"/>',
   pg1:'<circle cx="10" cy="10" r="5.5" fill="#4F95DB" stroke="none"/><circle cx="10" cy="10" r="5.5"/>',
   grp2:'<rect x="2.5" y="2.5" width="15" height="15" rx="2.5" stroke-dasharray="2.6 2.4"/><rect x="5.5" y="5.5" width="5" height="5" rx="1"/><rect x="9.5" y="9.5" width="5" height="5" rx="1"/>',
+  abturn:'<path d="M4 7l4-3h9l-4 3z"/><path d="M4 7h9v9H4z"/><path d="M13 7l4-3v9l-4 3"/>',
   ungrp:'<rect x="2.5" y="2.5" width="6.5" height="6.5" rx="1.3"/><rect x="11" y="11" width="6.5" height="6.5" rx="1.3"/><path d="M12 3.5l4.5 4.5M16.5 3.5L12 8"/>'
 };
 const ico = n => `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${IC[n]}</svg>`;
@@ -1295,6 +1499,7 @@ function hasZeroPair(list){
     const of = list.filter(i => i.k === k);
     if (of.some(i => i.neg) && of.some(i => !i.neg)) return true;
   }
+  if (Object.keys(AB).some(t => { const of = list.filter(i => i.k === 'ab' && i.t === t); return of.some(i => i.neg) && of.some(i => !i.neg); })) return true;
   return list.some(i => i.k === 'xd' && i.d.some(([p, n]) => p && n));
 }
 function updateBar(){
@@ -1305,7 +1510,9 @@ function updateBar(){
   if (sig === bar._sig) return;
   bar._sig = sig;
   const b = list.some(i => !NO_TURN.has(i.k)) ? [abtn('rotL','rotL','Rotate left'), abtn('rotR','rotR','Rotate right')] : [];
-  if (list.some(i => i.k === 'ctr' || AL[i.k])) b.push(abtn('flip','flip','Flip'));
+  if (list.some(i => i.k === 'ctr' || AL[i.k] || i.k === 'ab')) b.push(abtn('flip','flip','Flip'));
+  if (list.some(i => i.k === 'ab' && !i.lock)) b.push(abtn('abturn','abturn','Turn'));
+  if (list.some(i => i.k === 'amx' && !i.lock)) b.push(abtn('matturn','rotR','Turn mat'));
   if (list.some(i => DOWN[i.k])) b.push(abtn('break','brk','Break into 10'));
   if (GROUPABLE.some(k => list.filter(i => i.k === k && !i.lock).length >= 10)) b.push(abtn('group','grp','Group 10'));
   if (hasZeroPair(list)) b.push(abtn('zero','zero','Remove zero pairs'));
@@ -1353,7 +1560,33 @@ function doAction(a){
     out = isoSnap(out);   // back onto the dots (does nothing on other backgrounds)
     act(() => put(out));
   } else if (a === 'flip'){
-    act(() => put(free.filter(i => i.k === 'ctr' || AL[i.k]).map(i => { const n = { ...i }; if (n.neg) delete n.neg; else n.neg = true; return n; })));
+    act(() => put(free.filter(i => i.k === 'ctr' || AL[i.k] || i.k === 'ab').map(i => { const n = { ...i }; if (n.neg) delete n.neg; else n.neg = true; return n; })));
+  } else if (a === 'matturn'){
+    // stacked (+ top, − bottom) ⇄ side by side (− left, + right); every piece keeps its side and its spot on it
+    act(() => {
+      const out = [];
+      for (const m of free.filter(i => i.k === 'amx')){
+        const oldR = matRegions(m), n = { ...m }; if (n.lay === 'h') delete n.lay; else n.lay = 'h';
+        const newR = matRegions(n);
+        for (const r of oldR){
+          const nr = newR.find(q => q.role === r.role);
+          for (const p of onRegion(m, r)){
+            if (p.lock) continue;
+            const [cx, cy] = centerOf(p), { w, h } = size(p);
+            const fx = (cx - m.x - r.x) / r.w, fy = (cy - m.y - r.y) / r.h;
+            out.push({ ...p, x:Math.round(m.x + nr.x + fx*nr.w - w/2), y:Math.round(m.y + nr.y + fy*nr.h - h/2) });
+          }
+        }
+        out.push(n);
+      }
+      put(out);
+    });
+  } else if (a === 'abturn'){
+    // lying along → standing up → going back → lying along (keeps the block where it is, by its centre)
+    act(() => put(free.filter(i => i.k === 'ab').map(i => {
+      const [cx, cy] = centerOf(i), n = { ...i, o:((i.o || 0) + 1) % 3 }, { w, h } = size(n);
+      return { ...n, x:Math.round(cx - w/2), y:Math.round(cy - h/2) };
+    })));
   } else if (a === 'break') breakApart(free);
   else if (a === 'group') groupTen(free);
   else if (a === 'zero') zeroPairs(free);
@@ -1390,7 +1623,7 @@ function doAction(a){
     toast(lockIt ? 'Locked. Locked pieces stay put and are kept when the board is cleared.' : 'Unlocked.');
   } else if (a === 'del'){
     if (free.length < list.length) toast('Locked pieces were kept. Unlock them first to delete.');
-    act(() => { drop(withSeeds(free).filter(i => !i.lock).map(i => i.id)); relayout(); });
+    act(() => { drop(withSeeds(free).filter(i => !i.lock).map(i => i.id)); relayout(); prodLayout(); });
   }
 }
 
@@ -1491,6 +1724,12 @@ function zeroPairs(list){
   act(() => {
     for (const k of ['ctr','a1','ax','ax2']){
       const pos = list.filter(i => i.k === k && !i.neg), neg = list.filter(i => i.k === k && i.neg);
+      const n = Math.min(pos.length, neg.length);
+      drop([...pos.slice(0,n), ...neg.slice(0,n)].map(i => i.id));
+      removed += n;
+    }
+    for (const t of Object.keys(AB)){   // 3D blocks: a block and its negative of the same kind cancel
+      const pos = list.filter(i => i.k === 'ab' && i.t === t && !i.neg), neg = list.filter(i => i.k === 'ab' && i.t === t && i.neg);
       const n = Math.min(pos.length, neg.length);
       drop([...pos.slice(0,n), ...neg.slice(0,n)].map(i => i.id));
       removed += n;
@@ -1665,6 +1904,16 @@ function magnet(dx, dy){
 function startMove(p, ids, pre, fromTray){
   // a Taptinita carries the seeds sitting on it
   ids = withSeeds(ids.map(id => S.items[id])).filter(i => !i.lock).map(i => i.id);
+  // a mat carries the pieces sitting on it
+  for (const id of [...ids]){
+    const m = S.items[id]; if (!m || !MATS[m.k]) continue;
+    for (const o of Object.values(S.items)){
+      if (o.id === m.id || MAT.has(o.k) || o.lock || ids.includes(o.id)) continue;
+      const [cx, cy] = centerOf(o);
+      const ms = matSize(m);
+      if (cx >= m.x && cx <= m.x + ms.w && cy >= m.y && cy <= m.y + ms.h) ids.push(o.id);
+    }
+  }
   D = { mode:'move', pre, start:p, ids, fromTray, moved:!!fromTray,
         orig:new Map(ids.map(id => [id, { x:S.items[id].x, y:S.items[id].y }])) };
 }
@@ -1864,7 +2113,7 @@ svg.addEventListener('pointerdown', e => {
 
 function dbl(it){
   if (it.lock) return;
-  if (it.k === 'ctr' || AL[it.k]) act(() => { const n = { ...it }; if (n.neg) delete n.neg; else n.neg = true; put([n]); });
+  if (it.k === 'ctr' || AL[it.k] || it.k === 'ab') act(() => { const n = { ...it }; if (n.neg) delete n.neg; else n.neg = true; put([n]); });
   else if (['txt','nl','xd','pg','am'].includes(it.k)) editItem(it);
 }
 
@@ -2079,7 +2328,7 @@ function endPointer(e){
   if (d.mode === 'move'){
     if (!d.moved){ if (d.pgBtn) pgCycle(d.pgBtn); return; }
     if (e && e.type === 'pointerup' && overTray(e)){
-      drop(d.ids); relayout(); commit(d.pre); return;
+      drop(d.ids); relayout(); prodLayout(); commit(d.pre); return;
     }
     const changed = [];
     for (const id of d.ids){
@@ -2094,7 +2343,7 @@ function endPointer(e){
       changed.push(it);
     }
     pend.clear(); clearTimeout(pendT); pendT = 0;
-    put(changed); relayout(); commit(d.pre);
+    put(changed); relayout(); prodLayout(); commit(d.pre);
   }
 }
 window.addEventListener('pointerup', endPointer);
@@ -2387,6 +2636,8 @@ $('#helpBtn').onclick = () => openDlg(`<h2>How to use Edutorium Live</h2><div cl
     <li><b>Isometric dots:</b> with this background, pattern blocks snap their corners onto the dots and rotate 60° at a time so they stay on the dots.</li>
     <li><b>FDP grids</b> (fraction, decimal, percent): click squares on a Hundred grid or Ten strip to shade them, or drag across them. Click the value button underneath to switch between percent, fraction and decimal. <b>Two colours</b> adds Blue and Yellow buttons on the grid (each square is one colour), and the value button shows both amounts. <b>One colour</b> switches back. Double-click the frame (or Edit) to change the size; <b>Clear shading</b> empties it.</li>
     <li><b>Area model</b> (for multiplying): it starts blank. Build each side with the − / + buttons: <b>length</b> (whole units) and <b>split each</b> (parts in each whole), for x along the bottom and y up the left. Click sections of the bottom to shade columns blue and of the left side to shade rows yellow; the overlap turns green and the button shows the multiplication (3 × 4 = 12, 1/2 × 1/4 = 1/8). Inside the rectangle, the Vertical / Horizontal buttons choose what a click shades. Click the button to switch fraction, decimal and percent.</li>
+    <li><b>3D algebra blocks:</b> 1, x, y, x², xy, y², x³, x²y, xy², y³. <b>Turn</b> shows a block lying along, standing up or going back; double-click (or Flip) for the negative (red) side; Remove zero pairs cancels a block and its negative.</li>
+    <li><b>Algebra mats:</b> an Expression mat (+ and − sides), an Equation mat (left = right) and a Product mat (factors along the top and left, product in the middle), for algebra tiles, 3D blocks and counters. On the Product mat, tiles line up along the top and left, and the tiles in the middle snap into the rectangle they make. Select a mat with <b>Values</b> on to read what is on it.</li>
     <li><b>Kaktovik numerals:</b> drag any numeral from 0 to 19 onto the board. Strokes along the bottom count ones (1–4) and strokes across the top count fives (5, 10, 15). Turn on <b>Names</b> to see each card's value.</li>
     <li><b>Exploding Dots:</b> drag dots and anti-dots into the boxes of a dot machine. Drag a dot one box to the left to explode (10 dots become 1 on the left, or the machine's own rule), one box to the right to unexplode, or off the machine to remove it. A dashed orange box is ready to explode. Double-click the machine to change its boxes, its rule, or fill it with a number.</li>
     <li><b>Background:</b> choose blank, dots, a square grid, a coordinate grid or isometric dots.</li>
