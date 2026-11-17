@@ -360,11 +360,21 @@ const SEED = {
    d[i] = [dots, anti-dots] in box i. Rule "1 ← base": base dots in a box explode into 1 dot in the box to the left. */
 const XD_PAD = 16, XD_BOX = 190, XD_GAP = 14, XD_HEAD = 36, XD_FOOT = 34, XD_MAX = 60;
 const DOT_FILL = '#f59e0b', DOT_EDGE = '#92400e';
-/* percent grids: base-ten-shaped grids whose squares can be shaded. f = "0"/"1" per square, row by row.
-   show = how the shaded amount is written: 'pct' (37%), 'frac' (37/100) or 'dec' (0.37). */
-const PG_C = 30, PG_P = 12, PG_RB = 52, PG_FILL = '#4F95DB', PG_SHOW = ['dec','pct','frac'];
+/* FDP grids (Fraction, Decimal, Percent): base-ten-shaped grids whose squares can be shaded.
+   f = one character per square, row by row: 0 empty, 1 blue, 2 yellow (a square is never both).
+   One-colour grids only use 0 and 1. two = two-colour mode; brush = the colour being painted (1 blue, 2 yellow).
+   show = how amounts are written: 'pct' (37%), 'frac' (37/100) or 'dec' (0.37). */
+const PG_C = 30, PG_P = 12, PG_RB = 52, PG_HEAD = 40, PG_SHOW = ['dec','pct','frac'];
+const PG_COL = { 1:'#4F95DB', 2:'#F7C744', 3:'#5DBB63' }, PG_INK = { 1:'#1d4f8f', 2:'#8a6a10', 3:'#1f6b2c' };
+const PG_FILL = PG_COL[1];
+/* Area model for multiplying (whole numbers, fractions, decimals, mixed numbers). It starts blank: students build
+   each side with a length in wholes (xw / yw, 0–10) and how many parts each whole is split into (xp / yp, 1–12).
+   Both sides use the same scale, so the area is true. Columns along the bottom (x) and rows up the left side (y,
+   counted from the bottom) are shaded with cs / rs ("0"/"1" each): columns blue (vertical), rows yellow (horizontal),
+   overlap green = the product. brush = what a click inside the rectangle shades: 'v' or 'h'. */
+const AM_S = 300, AM_L = 132, AM_R = 28, AM_T = 46, AM_B = 92, AM_RB = 52, AM_MAXN = 60;
 const MAT = new Set(['tf','nl','tap']);
-const KINDS = new Set(['b1','b10','b100','b1000','f','rod','a1','ax','ax2','ctr','tf','sh','nl','txt','ink','tap','corn','pea','bean','lupin','xd','pg']);
+const KINDS = new Set(['b1','b10','b100','b1000','f','rod','a1','ax','ax2','ctr','tf','sh','nl','txt','ink','tap','corn','pea','bean','lupin','xd','pg','am']);
 
 function size(it){
   const k = it.k;
@@ -374,7 +384,8 @@ function size(it){
   switch (k) {
     case 'tap': return { w:220*TAP, h:310*TAP };
     case 'xd':  return { w:2*XD_PAD + it.n*XD_BOX + (it.n - 1)*XD_GAP, h:XD_HEAD + XD_BOX + XD_FOOT };
-    case 'pg':  return { w:Math.max(2*PG_P + it.cols*PG_C, 190), h:2*PG_P + it.rows*PG_C + PG_RB - PG_P };
+    case 'am':  return { w:AM_L + AM_S + AM_R, h:AM_T + AM_S + AM_B + AM_RB };
+    case 'pg':  return { w:Math.max(2*PG_P + it.cols*PG_C, it.two ? 300 : 190), h:(it.two ? PG_HEAD : 0) + 2*PG_P + it.rows*PG_C + PG_RB - PG_P };
     case 'f':   return { w:FW/it.n, h:FH };
     case 'rod': return { w:it.n*RU, h:RU };
     case 'ctr': return { w:44, h:44 };
@@ -421,21 +432,96 @@ function inner(it, L = S.labels){
            `<rect x="0" y="40" width="200" height="200" fill="${c}" stroke="${d}" stroke-width="1.4"/>`+
            `<path d="${segs(f)}${segs(t)}${segs(s)}" stroke="${d}" stroke-opacity=".4"/>` + btName(100, 152, '1,000', 34);
   }
-  if (k === 'pg'){
-    const { w, h } = size(it), gx = pgX(it), gw = it.cols*PG_C, gh = it.rows*PG_C, f = it.f;
+  if (k === 'am'){
+    const { w, h } = size(it), ox = AM_L, oy = AM_T + AM_S;            // origin: bottom-left corner
+    const nx = it.xw*it.xp, ny = it.yw*it.yp, u = AM_S / Math.max(it.xw, it.yw, 1);
+    const W = it.xw*u, H = it.yw*u, cw = nx ? W/nx : 0, rh = ny ? H/ny : 0;
     let s = `<rect x="1" y="1" width="${w - 2}" height="${h - 2}" rx="10" fill="#e8edf3" stroke="#64748b" stroke-width="2"/>`;
+    // what a click inside the square shades: whole columns (vertical, blue) or whole rows (horizontal, yellow)
+    const chip = (v, x, name, c) => {
+      const on = (it.brush || 'v') === v;
+      return `<g data-ambrush="${v}"><rect x="${x}" y="9" width="128" height="28" rx="14" fill="${on ? '#ffffff' : '#f1f5f9'}" stroke="${on ? PG_INK[c] : '#cbd5e1'}" stroke-width="${on ? 2.5 : 1.5}"/>`+
+             `<rect x="${x + (v === 'v' ? 12 : 8)}" y="${v === 'v' ? 15 : 19}" width="${v === 'v' ? 9 : 17}" height="${v === 'v' ? 16 : 8}" rx="2" fill="${PG_COL[c]}" stroke="${PG_INK[c]}" stroke-width="1.2"/>`+
+             `<text x="${x + 31}" y="28.5" font-size="15" font-weight="${on ? 800 : 600}" fill="#1f2937">${name}</text></g>`;
+    };
+    s += chip('v', ox, 'Vertical', 1) + chip('h', ox + 136, 'Horizontal', 2);
+    // open axes: the x axis along the bottom, the y axis up the left
+    s += `<rect x="${ox}" y="${AM_T}" width="${AM_S}" height="${AM_S}" fill="#fcfbf7" stroke="#cbd5e1" stroke-dasharray="6 6" pointer-events="none"/>`+
+         `<path d="M${ox} ${oy}H${ox + AM_S + 14}M${ox} ${oy}V${AM_T - 6}" stroke="#1f2937" stroke-width="2.5" pointer-events="none"/>`+
+         `<path d="M${ox + AM_S + 18} ${oy}l-10 -5v10zM${ox} ${AM_T - 10}l-5 10h10z" fill="#1f2937" pointer-events="none"/>`+
+         `<text x="${ox + AM_S + 12}" y="${oy - 8}" font-size="15" font-style="italic" font-weight="700" fill="#475569" pointer-events="none">x</text>`+
+         `<text x="${ox + 9}" y="${AM_T}" font-size="15" font-style="italic" font-weight="700" fill="#475569" pointer-events="none">y</text>`;
+    if (!nx && !ny) s += `<text x="${ox + AM_S/2}" y="${AM_T + AM_S/2 - 8}" font-size="15" font-weight="600" fill="#64748b" text-anchor="middle" pointer-events="none">Build the sides with</text>`+
+                         `<text x="${ox + AM_S/2}" y="${AM_T + AM_S/2 + 14}" font-size="15" font-weight="600" fill="#64748b" text-anchor="middle" pointer-events="none">− / + for x (bottom) and y (left)</text>`;
+    // the pieces (once both sides exist): blue where the column is shaded, yellow where the row is, green where both are
+    if (nx && ny){
+      for (let i = 0; i < nx; i++) for (let j = 0; j < ny; j++){
+        const st = (it.cs[i] === '1' ? 1 : 0) | (it.rs[j] === '1' ? 2 : 0);
+        s += `<rect data-amcell="${i},${j}" x="${ox + i*cw}" y="${oy - (j + 1)*rh}" width="${cw}" height="${rh}" fill="${PG_COL[st] || '#ffffff'}"/>`;
+      }
+      let gl = '', wl = '';
+      for (let i = 1; i < nx; i++){ const l = `M${ox + i*cw} ${oy - H}V${oy}`; if (i % it.xp) gl += l; else wl += l; }
+      for (let j = 1; j < ny; j++){ const l = `M${ox} ${oy - j*rh}H${ox + W}`; if (j % it.yp) gl += l; else wl += l; }
+      // thin lines between parts, thicker lines between wholes
+      s += `<path d="${gl}" stroke="#64748b" stroke-width="1.3" pointer-events="none"/><path d="${wl}" stroke="#334155" stroke-width="2.2" pointer-events="none"/>`+
+           `<rect x="${ox}" y="${oy - H}" width="${W}" height="${H}" fill="none" stroke="#1f2937" stroke-width="2.5" pointer-events="none"/>`;
+    }
+    // each side's sections can be clicked (or dragged along) to shade that column or row
+    for (let i = 0; i < nx; i++) s += `<rect data-amcol="${i}" x="${ox + i*cw}" y="${oy + 2}" width="${cw}" height="40" fill="${it.cs[i] === '1' ? PG_COL[1] : 'transparent'}" fill-opacity=".25"/>`;
+    for (let j = 0; j < ny; j++) s += `<rect data-amrow="${j}" x="${ox - 60}" y="${oy - (j + 1)*rh}" width="58" height="${rh}" fill="${it.rs[j] === '1' ? PG_COL[2] : 'transparent'}" fill-opacity=".32"/>`;
+    let ticks = '';
+    const fsx = Math.max(9, Math.min(15, cw*0.55 || 15)), fsy = Math.max(9, Math.min(15, rh*0.42 || 15));
+    for (let i = 0; i <= nx && nx; i++){ const x = ox + i*cw; ticks += `M${x} ${oy}V${oy + (i % it.xp ? 7 : 11)}`; s += amLabel(it, i, it.xp, x, oy + 14, fsx, 'middle'); }
+    for (let j = 0; j <= ny && ny; j++){ const y = oy - j*rh; ticks += `M${ox - (j % it.yp ? 7 : 11)} ${y}H${ox}`; s += amLabel(it, j, it.yp, ox - 15, y, fsy, 'end'); }
+    if (ticks) s += `<path d="${ticks}" stroke="#1f2937" stroke-width="2" pointer-events="none"/>`;
+    // − / + controls to build each side: x under the bottom, y in the left column
+    const stepper = (key, x, y, val) =>
+      `<g data-amstep="${key}:-1"><rect x="${x}" y="${y}" width="22" height="22" rx="6" fill="#ffffff" stroke="#94a3b8"/><text x="${x + 11}" y="${y + 16}" font-size="17" font-weight="800" fill="#334155" text-anchor="middle">−</text></g>`+
+      `<text x="${x + 37}" y="${y + 16.5}" font-size="16" font-weight="800" fill="#1f2937" text-anchor="middle" pointer-events="none">${val}</text>`+
+      `<g data-amstep="${key}:1"><rect x="${x + 52}" y="${y}" width="22" height="22" rx="6" fill="#ffffff" stroke="#94a3b8"/><text x="${x + 63}" y="${y + 16.5}" font-size="17" font-weight="800" fill="#334155" text-anchor="middle">+</text></g>`;
+    const cap = t => `<text font-size="12.5" font-weight="700" fill="#475569" pointer-events="none" ${t}`;
+    const by0 = oy + 52;
+    s += `${cap(`x="${ox}" y="${by0 + 15}">x length</text>`)}${stepper('xw', ox + 64, by0, it.xw)}`+
+         `${cap(`x="${ox + 154}" y="${by0 + 15}">split each</text>`)}${stepper('xp', ox + 226, by0, it.xp)}`;
+    const ly = AM_T + 70;
+    s += `${cap(`x="10" y="${ly}">y length</text>`)}${stepper('yw', 10, ly + 6, it.yw)}`+
+         `${cap(`x="10" y="${ly + 66}">split each</text>`)}${stepper('yp', 10, ly + 72, it.yp)}`;
+    // the equation button: click it to switch fraction / decimal / percent
+    const segs = amSegments(it), len = segs.reduce((n, [, t]) => n + [...t].length, 0);
+    const bw = Math.min(w - 16, Math.max(170, len*10.5 + 52)), bx = (w - bw)/2, by = oy + AM_B + 6;
+    const body = segs.map(([c, t]) => c ? `<tspan fill="${PG_INK[c]}">${esc(t)}</tspan>` : `<tspan fill="#334155">${esc(t)}</tspan>`).join('');
+    return s + `<g data-pgbtn="1"><rect x="${bx}" y="${by}" width="${bw}" height="34" rx="17" fill="#ffffff" stroke="#3b82f6" stroke-width="2"/>`+
+      `<text x="${bx + (bw - 26)/2 + 2}" y="${by + 23}" font-size="16" font-weight="800" text-anchor="middle" xml:space="preserve">${body}</text>`+
+      `<path d="M${bx + bw - 30} ${by + 13}h11l-3.5-3.5M${bx + bw - 19} ${by + 21}h-11l3.5 3.5" stroke="#3b82f6" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>`;
+  }
+  if (k === 'pg'){
+    const { w, h } = size(it), gx = pgX(it), gw = it.cols*PG_C, gh = it.rows*PG_C, f = it.f, ty = it.two ? PG_HEAD : 0;
+    let s = `<rect x="1" y="1" width="${w - 2}" height="${h - 2}" rx="10" fill="#e8edf3" stroke="#64748b" stroke-width="2"/>`;
+    if (it.two){
+      // colour buttons: choose the colour to shade with; a square with both colours turns green
+      const chip = (b, x, name) => {
+        const on = (it.brush || '1') === b;
+        return `<g data-pgbrush="${b}"><rect x="${x}" y="8" width="96" height="28" rx="14" fill="${on ? '#ffffff' : '#f1f5f9'}" stroke="${on ? PG_INK[b] : '#cbd5e1'}" stroke-width="${on ? 2.5 : 1.5}"/>`+
+               `<circle cx="${x + 17}" cy="22" r="8" fill="${PG_COL[b]}" stroke="${PG_INK[b]}" stroke-width="1.2"/>`+
+               `<text x="${x + 31}" y="27.5" font-size="15" font-weight="${on ? 800 : 600}" fill="#1f2937">${name}</text></g>`;
+      };
+      s += chip('1', 10, 'Blue') + chip('2', 112, 'Yellow');
+    }
     for (let r = 0; r < it.rows; r++) for (let c = 0; c < it.cols; c++){
       const i = r*it.cols + c;
-      s += `<rect data-cell="${i}" x="${gx + c*PG_C}" y="${PG_P + r*PG_C}" width="${PG_C}" height="${PG_C}" fill="${f[i] === '1' ? PG_FILL : '#ffffff'}"/>`;
+      s += `<rect data-cell="${i}" x="${gx + c*PG_C}" y="${ty + PG_P + r*PG_C}" width="${PG_C}" height="${PG_C}" fill="${PG_COL[f[i]] || '#ffffff'}"/>`;
     }
     let gl = '';
-    for (let c = 0; c <= it.cols; c++) gl += `M${gx + c*PG_C} ${PG_P}V${PG_P + gh}`;
-    for (let r = 0; r <= it.rows; r++) gl += `M${gx} ${PG_P + r*PG_C}H${gx + gw}`;
+    for (let c = 0; c <= it.cols; c++) gl += `M${gx + c*PG_C} ${ty + PG_P}V${ty + PG_P + gh}`;
+    for (let r = 0; r <= it.rows; r++) gl += `M${gx} ${ty + PG_P + r*PG_C}H${gx + gw}`;
     s += `<path d="${gl}" stroke="#64748b" stroke-width="1.2" pointer-events="none"/>`;
     // the value button: click it to switch between percent, fraction and decimal
-    const txt = pgText(it), bw = Math.min(w - 16, Math.max(130, [...txt].length*11.5 + 52)), bx = (w - bw)/2, by = PG_P + gh + 9;
+    const segs = pgSegments(it), len = segs.reduce((a, [, t]) => a + [...t].length, 0) + (segs.length - 1)*3;
+    const bw = Math.min(w - 16, Math.max(130, len*11 + (segs.length > 1 ? segs.length*14 : 0) + 52)), bx = (w - bw)/2, by = ty + PG_P + gh + 9;
+    const body = segs.length === 1 ? esc(segs[0][1])
+      : segs.map(([b, t]) => `<tspan fill="${PG_COL[b]}" stroke="${PG_INK[b]}" stroke-width=".6">●</tspan><tspan fill="${PG_INK[b]}"> ${esc(t)}</tspan>`).join('<tspan>   </tspan>');
     return s + `<g data-pgbtn="1"><rect x="${bx}" y="${by}" width="${bw}" height="34" rx="17" fill="#ffffff" stroke="#3b82f6" stroke-width="2"/>`+
-      `<text x="${bx + (bw - 26)/2 + 2}" y="${by + 23}" font-size="18" font-weight="800" fill="#1e3a8a" text-anchor="middle">${esc(txt)}</text>`+
+      `<text x="${bx + (bw - 26)/2 + 2}" y="${by + 23}" font-size="${segs.length > 1 ? 16 : 18}" font-weight="800" fill="#1e3a8a" text-anchor="middle" xml:space="preserve">${body}</text>`+
       `<path d="M${bx + bw - 30} ${by + 13}h11l-3.5-3.5M${bx + bw - 19} ${by + 21}h-11l3.5 3.5" stroke="#3b82f6" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>`;
   }
   if (k === 'xd'){
@@ -582,27 +668,125 @@ function editHop(it, i){
       act(() => put([{ ...cur, hops }]));
     });
 }
-/* ---------- percent grids ---------- */
+/* ---------- FDP grids ---------- */
 const pgX = it => (size(it).w - it.cols*PG_C) / 2;   // left edge of the squares (the frame can be wider than a strip)
-const pgCount = it => [...it.f].filter(c => c === '1').length;
+// squares holding a colour: bit 1 = blue, bit 2 = yellow (green squares have both)
+const pgBits = (it, bit) => [...it.f].filter(c => (+c) & bit).length;
+const pgCount = it => pgBits(it, 3);   // shaded in any colour
 const trimNum = v => String(Math.round(v*1000)/1000);
 const isExact = v => Math.abs(v*1000 - Math.round(v*1000)) < 1e-9;
-function pgText(it){
-  const N = it.rows*it.cols, n = pgCount(it), v = n / N;
-  if (it.show === 'dec') return (isExact(v) ? '' : '≈') + trimNum(v);
-  if (it.show === 'frac'){
+// n of N written as a percent, decimal or fraction; short fractions are simplified only (for the three-colour readout)
+function fdp(n, N, show, short){
+  const v = n / N;
+  if (show === 'dec') return (isExact(v) ? '' : '≈') + trimNum(v);
+  if (show === 'frac'){
     const g = gcd(n, N);
-    if (!n || g === 1) return `${n}/${N}`;
+    if (!n) return short ? '0' : `0/${N}`;
+    if (short) return N/g === 1 ? String(n/g) : `${n/g}/${N/g}`;
+    if (g === 1) return `${n}/${N}`;
     return N/g === 1 ? `${n}/${N} = ${n/g}` : `${n}/${N} = ${n/g}/${N/g}`;
   }
   const p = v*100, r = Math.round(p*100)/100;
   return (Math.abs(p - r) < 1e-9 ? '' : '≈') + r + '%';
 }
-// shade (or unshade) one square while painting; sent to partners when the drag ends
+function pgText(it){ return fdp(pgCount(it), it.rows*it.cols, it.show, false); }
+// what the value button shows: one amount, or blue and yellow in two-colour mode
+function pgSegments(it){
+  const N = it.rows*it.cols;
+  if (!it.two) return [['1', pgText(it)]];
+  return [['1', pgBits(it, 1)], ['2', pgBits(it, 2)]].map(([b, n]) => [b, fdp(n, N, it.show, true)]);
+}
+// shade one square in the brush colour (replacing the other colour), or clear squares of the brush colour,
+// while painting; sent to partners when the drag ends
 function pgPaint(i){
-  const it = S.items[D.id]; if (!it || it.f[i] === D.val) return;
-  S.items[D.id] = { ...it, f:it.f.slice(0, i) + D.val + it.f.slice(i + 1) };
+  const it = S.items[D.id]; if (!it) return;
+  const cur = +it.f[i], nxt = D.set ? D.bit : (cur === D.bit ? 0 : cur);
+  if (nxt === cur) return;
+  S.items[D.id] = { ...it, f:it.f.slice(0, i) + nxt + it.f.slice(i + 1) };
   dirty(); sendLater([D.id]);
+}
+/* ---------- area model ---------- */
+// a side label at k/n, written to match the button: a stacked fraction, a decimal or a percent
+function amLabel(it, k, n, x, y, fs, anchor){
+  const side = anchor === 'end';
+  if (it.show === 'frac' && n === 1)   // whole-number sides are labelled 0, 1, 2, …
+    return `<text x="${x}" y="${side ? y + 5 : y + fs + 2}" font-size="${fs}" font-weight="700" fill="#1f2937" text-anchor="${anchor}" pointer-events="none">${k}</text>`;
+  if (it.show === 'frac'){
+    const cx = side ? x - fs*0.7 : x, cy = side ? y - 1 : y + fs;
+    return `<g pointer-events="none">${fracLabel(k, n, cx, cy, '#1f2937', fs)}</g>`;
+  }
+  const v = k / n, t = it.show === 'pct' ? (isExact(v*100) ? '' : '≈') + Math.round(v*1000)/10 + '%' : (isExact(v) ? '' : '≈') + trimNum(v);
+  return `<text x="${x}" y="${side ? y + 5 : y + fs + 2}" font-size="${fs}" font-weight="700" fill="#1f2937" text-anchor="${anchor}" pointer-events="none">${t}</text>`;
+}
+const amCount = s => [...s].filter(c => c === '1').length;
+// "blue × yellow = green" in the chosen form. A factor is the shaded columns (rows) in parts of a whole, kept as the
+// model shows them (2/4 stays 2/4; whole-number sides read 3, 4…); the product adds its simplest form (6/4 = 1 1/2)
+function amSegments(it){
+  if (!it.xw || !it.yw) return [['', it.xw || it.yw ? 'Now build the other side' : 'Build both sides']];
+  const p = amCount(it.cs), q = amCount(it.rs), A = it.xp*it.yp, n = p*q;
+  const f = (k, P) => it.show === 'frac' ? (P === 1 ? String(k) : `${k}/${P}`) : fdp(k, P, it.show, true);
+  let prod;
+  if (it.show === 'frac'){
+    prod = A === 1 ? String(n) : `${n}/${A}`;
+    const simple = fracStr(n, A);
+    if (A > 1 && simple !== prod) prod += ' = ' + simple;
+  } else prod = fdp(n, A, it.show, true);
+  return [['1', f(p, it.xp)], ['', ' × '], ['2', f(q, it.yp)], ['', ' = '], ['3', prod]];
+}
+// − / + on a side: length in wholes (0–10) or parts in each whole (1–12); shading that still fits is kept
+function amStep(it, key, d){
+  const lim = { xw:[0,10], yw:[0,10], xp:[1,12], yp:[1,12] }[key];
+  const n = { ...it, [key]: Math.min(lim[1], Math.max(lim[0], it[key] + d)) };
+  if (n[key] === it[key]) return;
+  if (n.xw*n.xp > AM_MAXN || n.yw*n.yp > AM_MAXN){ toast(`A side can have at most ${AM_MAXN} parts.`); return; }
+  n.cs = it.cs.slice(0, n.xw*n.xp).padEnd(n.xw*n.xp, '0');
+  n.rs = it.rs.slice(0, n.yw*n.yp).padEnd(n.yw*n.yp, '0');
+  if (key === 'xp' || key === 'yp'){ if (key === 'xp') n.cs = '0'.repeat(n.xw*n.xp); else n.rs = '0'.repeat(n.yw*n.yp); }   // new parts: start clear
+  act(() => put([n]));
+}
+// shade or unshade one column or row while dragging; sent to partners when the drag ends
+function amPaint(idx){
+  const it = S.items[D.id]; if (!it) return;
+  const key = D.kind === 'c' ? 'cs' : 'rs', str = it[key];
+  if (idx < 0 || idx >= str.length || (str[idx] === '1') === D.set) return;
+  S.items[D.id] = { ...it, [key]: str.slice(0, idx) + (D.set ? '1' : '0') + str.slice(idx + 1) };
+  dirty(); sendLater([D.id]);
+}
+// which column/row a pointer is over (for dragging along a side or across the square)
+function amIndexAt(e, id, kind){
+  const el = document.elementFromPoint(e.clientX, e.clientY), g = el && el.closest && el.closest('#items > g');
+  if (!g || g.dataset.id !== id) return -1;
+  const side = el.closest(kind === 'c' ? '[data-amcol]' : '[data-amrow]');
+  if (side) return +(kind === 'c' ? side.dataset.amcol : side.dataset.amrow);
+  const cell = el.closest('[data-amcell]');
+  if (cell){ const [i, j] = cell.dataset.amcell.split(',').map(Number); return kind === 'c' ? i : j; }
+  return -1;
+}
+function amDialog(it){
+  const lens = [...Array(11)].map((_, i) => [i, i === 0 ? 'Not set' : i]), parts = [...Array(12)].map((_, i) => [i + 1, i + 1 === 1 ? '1 (whole numbers)' : i + 1]);
+  openDlg(`<h2>Area model</h2><p>Each side is a length in wholes, with each whole split into equal parts. Shading is cleared on a side whose parts change.</p>
+    <div class="row"><div><label for="amXW">x (bottom): length</label><select id="amXW" name="xw">${opts(lens, it.xw)}</select></div>
+    <div><label for="amXP">x: split each whole into</label><select id="amXP" name="xp">${opts(parts, it.xp)}</select></div></div>
+    <div class="row"><div><label for="amYW">y (left): length</label><select id="amYW" name="yw">${opts(lens, it.yw)}</select></div>
+    <div><label for="amYP">y: split each whole into</label><select id="amYP" name="yp">${opts(parts, it.yp)}</select></div></div>
+    <p id="amErr" class="warn" hidden>A side can have at most ${AM_MAXN} parts (length × split).</p>
+    <menu><button class="btn primary" value="ok">Save</button><button class="btn" value="cancel">Cancel</button></menu>`,
+    (v, fd) => {
+      const cur = S.items[it.id] || it, xw = +fd.get('xw'), xp = +fd.get('xp'), yw = +fd.get('yw'), yp = +fd.get('yp');
+      if (xw*xp > AM_MAXN || yw*yp > AM_MAXN){ $('#amErr').hidden = false; return false; }
+      const cs = xp === cur.xp ? cur.cs.slice(0, xw*xp).padEnd(xw*xp, '0') : '0'.repeat(xw*xp);
+      const rs = yp === cur.yp ? cur.rs.slice(0, yw*yp).padEnd(yw*yp, '0') : '0'.repeat(yw*yp);
+      act(() => put([{ ...cur, xw, xp, yw, yp, cs, rs }]));
+    });
+}
+
+// one colour ⇄ two colours; going back to one colour keeps every shaded square, in blue
+function pgSetTwo(list, two){
+  act(() => put(list.map(i => {
+    const n = { ...i, f: two ? i.f : i.f.replace(/[1-3]/g, '1') };
+    if (two){ n.two = true; n.brush = n.brush || '1'; } else delete n.two;
+    return n;
+  })));
 }
 // percent → fraction → decimal → percent …
 function pgCycle(id){
@@ -611,15 +795,18 @@ function pgCycle(id){
   act(() => put([{ ...it, show:next }]));
 }
 function pgDialog(it){
-  openDlg(`<h2>Percent grid</h2><p>Choose its size. The shading is kept where it still fits.</p>
+  openDlg(`<h2>FDP grid</h2><p>Fraction, decimal and percent. Choose its size and colours; shading is kept where it still fits.</p>
     <div class="row"><div><label for="pgR">Rows</label><select id="pgR" name="rows">${opts([...Array(12)].map((_, i) => [i + 1, i + 1]), it.rows)}</select></div>
     <div><label for="pgC">Columns</label><select id="pgC" name="cols">${opts([...Array(12)].map((_, i) => [i + 1, i + 1]), it.cols)}</select></div></div>
+    <label for="pgT">Colours</label><select id="pgT" name="two">${opts([['0','One colour (blue)'],['1','Two colours (blue and yellow)']], it.two ? '1' : '0')}</select>
     <menu><button class="btn primary" value="ok">Save</button><button class="btn" value="cancel">Cancel</button></menu>`,
     (v, fd) => {
-      const cur = S.items[it.id] || it, rows = +fd.get('rows'), cols = +fd.get('cols');
+      const cur = S.items[it.id] || it, rows = +fd.get('rows'), cols = +fd.get('cols'), two = fd.get('two') === '1';
       let f = '';
       for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) f += r < cur.rows && c < cur.cols ? cur.f[r*cur.cols + c] : '0';
-      act(() => put([{ ...cur, rows, cols, f }]));
+      const n = { ...cur, rows, cols, f: two ? f : f.replace(/[1-3]/g, '1') };
+      if (two){ n.two = true; n.brush = n.brush || '1'; } else delete n.two;
+      act(() => put([n]));
     });
 }
 
@@ -737,9 +924,21 @@ function clean(o){
                 it.min =Math.round(num(o.min,0,-1000,1000)); it.max = Math.round(num(o.max,10,it.min+1,it.min+240));
                 it.p = PARTS.includes(+o.p) ? +o.p : 1; it.w = num(o.w,1200,400,1560); break;
     case 'txt': it.text = String(o.text || '').slice(0,80); it.fs = [24,32,48,64].includes(+o.fs) ? +o.fs : 32; it.c = col(o.c); break;
+    case 'am':
+      it.xw = Math.round(num(o.xw,0,0,10)); it.xp = Math.round(num(o.xp,1,1,12));
+      it.yw = Math.round(num(o.yw,0,0,10)); it.yp = Math.round(num(o.yp,1,1,12));
+      if (it.xw*it.xp > AM_MAXN){ it.xw = 0; } if (it.yw*it.yp > AM_MAXN){ it.yw = 0; }
+      it.cs = String(o.cs || '').replace(/[^01]/g, '').slice(0, it.xw*it.xp).padEnd(it.xw*it.xp, '0');
+      it.rs = String(o.rs || '').replace(/[^01]/g, '').slice(0, it.yw*it.yp).padEnd(it.yw*it.yp, '0');
+      it.brush = o.brush === 'h' ? 'h' : 'v';
+      it.show = PG_SHOW.includes(o.show) ? o.show : 'frac';
+      break;
     case 'pg':
       it.rows = Math.round(num(o.rows,10,1,12)); it.cols = Math.round(num(o.cols,10,1,12));
-      it.f = String(o.f || '').replace(/[^01]/g, '').slice(0, it.rows*it.cols).padEnd(it.rows*it.cols, '0');
+      if (o.two) it.two = true;
+      it.f = String(o.f || '').replace(/[^0-3]/g, '').slice(0, it.rows*it.cols).padEnd(it.rows*it.cols, '0');
+      it.f = it.two ? it.f.replace(/3/g, '1') : it.f.replace(/[1-3]/g, '1');   // a square is one colour only
+      it.brush = o.brush === '2' ? '2' : '1';
       it.show = PG_SHOW.includes(o.show) ? o.show : 'pct';
       break;
     case 'xd':
@@ -771,6 +970,7 @@ function tpl(pid){
   if (pid === 'tf') return { k:'tf' };
   if (pid === 'tap' || SEED[pid]) return { k:pid };
   if (pid === 'xd') return { k:'xd', n:3, base:10, d:[[0,0],[0,0],[0,0]] };
+  if (pid === 'am') return { k:'am', xw:0, xp:1, yw:0, yp:1, cs:'', rs:'', brush:'v', show:'frac' };   // starts blank
   if (pid === 'pg100') return { k:'pg', rows:10, cols:10, f:'0'.repeat(100), show:'pct' };
   if (pid === 'pg10') return { k:'pg', rows:10, cols:1, f:'0'.repeat(10), show:'pct' };
   if (pid.startsWith('sh-')) return { k:'sh', s:pid.slice(3) };
@@ -781,7 +981,8 @@ function tpl(pid){
 
 const GROUPS = [
   { id:'base10', name:'Base ten blocks', tiles:[['b1','One'],['b10','Ten'],['b100','Hundred'],['b1000','Thousand']] },
-  { id:'percent', name:'Percent grids', tiles:[['pg100','Hundred grid'],['pg10','Ten strip']] },
+  { id:'fdp', name:'FDP grids', tiles:[['pg100','Hundred grid'],['pg10','Ten strip']] },
+  { id:'area', name:'Area model', tiles:[['am','Area model']] },
   { id:'taptinita', name:'Taptinita', tiles:[['tap','Taptinita'],['corn','Corn'],['pea','Pea'],['bean','Bean'],['lupin','Lupin']] },
   { id:'fractions', name:'Fraction bars', wall:FW, tiles:FDEN.map(n => ['f'+n, n===1 ? 'One whole' : 'One ' + ({2:'half',3:'third',4:'fourth',5:'fifth',6:'sixth',8:'eighth',10:'tenth',12:'twelfth'})[n]]) },
   { id:'rods', name:'Number rods', wall:10*RU, tiles:[1,2,3,4,5,6,7,8,9,10].map(n => ['rod'+n, 'Rod ' + n]) },
@@ -793,7 +994,8 @@ const GROUPS = [
 ];
 
 function buildTray(){
-  const want = (params.get('tray') || '').split(',').map(s => s.trim() === 'shapes' ? 'patternblocks' : s.trim()).filter(Boolean);
+  const alias = { shapes:'patternblocks', percent:'fdp' };   // old link names still work
+  const want = (params.get('tray') || '').split(',').map(s => alias[s.trim()] || s.trim()).filter(Boolean);
   let html = '';
   for (const g of GROUPS){
     if (want.length && !want.includes(g.id)) continue;
@@ -994,8 +1196,14 @@ function valueText(list){
     parts.push(`Counters: ${p} positive, ${n} negative → ${v < 0 ? '−' + (-v) : v}`);
   }
   for (const g of list.filter(i => i.k === 'pg')){
-    const N = g.rows*g.cols, n = pgCount(g), text = mode => pgText({ ...g, show:mode });
-    parts.push(`Shaded: ${n} of ${N} = ${text('pct')} = ${text('dec')} = ${text('frac')}`);
+    const N = g.rows*g.cols, all = n => `${n} of ${N} = ${fdp(n, N, 'pct')} = ${fdp(n, N, 'dec')} = ${fdp(n, N, 'frac')}`;
+    if (!g.two) parts.push(`Shaded: ${all(pgCount(g))}`);
+    else parts.push(`Blue: ${all(pgBits(g, 1))}   ·   Yellow: ${all(pgBits(g, 2))}   ·   Total shaded: ${all(pgCount(g))}`);
+  }
+  for (const m of list.filter(i => i.k === 'am')){
+    if (!m.xw || !m.yw){ parts.push('Area model: sides not built yet'); continue; }
+    const fr = amSegments({ ...m, show:'frac' }), de = amSegments({ ...m, show:'dec' }), pc = amSegments({ ...m, show:'pct' });
+    parts.push(`Area model: ${fr.map(s => s[1]).join('')}   ·   ${de.map(s => s[1]).join('')}   ·   ${pc.map(s => s[1]).join('')}`);
   }
   for (const m of list.filter(i => i.k === 'xd')){
     // boxes from the left, e.g. "1 | 3 | 2 = 132"; an anti-dot counts as minus one
@@ -1020,6 +1228,8 @@ const IC = {
   unlock:'<rect x="4.5" y="9" width="11" height="8" rx="2"/><path d="M7 9V6.5a3 3 0 015.8-1"/>',
   del:'<path d="M4 6h12M8 6V4h4v2M5.5 6l.8 10h7.4l.8-10"/>',
   front:'<rect x="6" y="6" width="11" height="11" rx="2"/><path d="M3 13V5a2 2 0 012-2h8"/>',
+  pg2:'<circle cx="8" cy="10" r="5" fill="#4F95DB" stroke="none"/><circle cx="12" cy="10" r="5" fill="#F7C744" stroke="none" opacity=".85"/><circle cx="8" cy="10" r="5"/><circle cx="12" cy="10" r="5"/>',
+  pg1:'<circle cx="10" cy="10" r="5.5" fill="#4F95DB" stroke="none"/><circle cx="10" cy="10" r="5.5"/>',
   grp2:'<rect x="2.5" y="2.5" width="15" height="15" rx="2.5" stroke-dasharray="2.6 2.4"/><rect x="5.5" y="5.5" width="5" height="5" rx="1"/><rect x="9.5" y="9.5" width="5" height="5" rx="1"/>',
   ungrp:'<rect x="2.5" y="2.5" width="6.5" height="6.5" rx="1.3"/><rect x="11" y="11" width="6.5" height="6.5" rx="1.3"/><path d="M12 3.5l4.5 4.5M16.5 3.5L12 8"/>'
 };
@@ -1051,8 +1261,10 @@ function updateBar(){
   if (list.some(i => DOWN[i.k])) b.push(abtn('break','brk','Break into 10'));
   if (GROUPABLE.some(k => list.filter(i => i.k === k && !i.lock).length >= 10)) b.push(abtn('group','grp','Group 10'));
   if (hasZeroPair(list)) b.push(abtn('zero','zero','Remove zero pairs'));
-  if (list.length === 1 && ['nl','txt','xd','pg'].includes(list[0].k)) b.push(abtn('edit','edit','Edit'));
-  if (list.some(i => i.k === 'pg' && i.f.includes('1'))) b.push(abtn('pgclr','zero','Clear shading'));
+  if (list.length === 1 && ['nl','txt','xd','pg','am'].includes(list[0].k)) b.push(abtn('edit','edit','Edit'));
+  if (list.some(i => (i.k === 'pg' && /[1-3]/.test(i.f)) || (i.k === 'am' && /1/.test(i.cs + i.rs)))) b.push(abtn('pgclr','zero','Clear shading'));
+  const pgs = list.filter(i => i.k === 'pg');
+  if (pgs.length) b.push(pgs.every(i => i.two) ? abtn('pg1','pg1','One colour') : abtn('pg2','pg2','Two colours'));
   const grps = new Set(list.map(i => i.grp).filter(Boolean));
   if (list.length > 1 && !(grps.size === 1 && list.every(i => i.grp))) b.push(abtn('grp','grp2','Group'));
   if (grps.size) b.push(abtn('ungrp','ungrp','Ungroup'));
@@ -1107,8 +1319,13 @@ function doAction(a){
       if (n.grp) n.grp = newGrp[n.grp] || (newGrp[n.grp] = 'g' + rid()); n.id = newId(); n.x += 30; n.y += 30; n.z = MAT.has(n.k) ? zBottom() - 1 : z++; delete n.lock; return n; });
     act(() => put(copies));
     S.sel = new Set(copies.map(c => c.id)); dirty();
+  } else if (a === 'pg2' || a === 'pg1'){
+    pgSetTwo(free.filter(i => i.k === 'pg'), a === 'pg2');
+    if (a === 'pg2') toast('Two colours: pick Blue or Yellow on the grid, then shade squares.');
   } else if (a === 'pgclr'){
-    act(() => put(free.filter(i => i.k === 'pg').map(i => ({ ...i, f:'0'.repeat(i.rows*i.cols) }))));
+    act(() => put(free.filter(i => i.k === 'pg' || i.k === 'am').map(i => i.k === 'pg'
+      ? { ...i, f:'0'.repeat(i.rows*i.cols) }                               // works for both colours
+      : { ...i, cs:'0'.repeat(i.cs.length), rs:'0'.repeat(i.rs.length) })));
   } else if (a === 'grp'){
     if (list.length < 2){ toast('Select two or more pieces to group them.'); return; }
     const g = 'g' + rid();
@@ -1288,6 +1505,7 @@ function editItem(it){
   } else if (it.k === 'txt') textDialog(it);
   else if (it.k === 'xd') xdDialog(it);
   else if (it.k === 'pg') pgDialog(it);
+  else if (it.k === 'am') amDialog(it);
 }
 
 function xdDialog(it){
@@ -1520,7 +1738,8 @@ svg.addEventListener('pointerdown', e => {
   }
   if (it){
     const now = performance.now(), cellEl = it.k === 'pg' ? e.target.closest('[data-cell]') : null;
-    if (now - lastTap.t < 380 && lastTap.id === it.id && !cellEl){   // quick taps on grid squares just shade them
+    const amEl = it.k === 'am' ? e.target.closest('[data-amcol],[data-amrow],[data-amcell],[data-ambrush],[data-amstep]') : null;
+    if (now - lastTap.t < 380 && lastTap.id === it.id && !cellEl && !amEl){   // quick taps on squares or strips just shade them
       const hi = lastTap.hop; lastTap = { t:0, id:null };
       if (it.k === 'nl' && hi !== null && hi === hopIdx && !it.lock) editHop(it, hi); else dbl(it);
       return;
@@ -1528,10 +1747,32 @@ svg.addEventListener('pointerdown', e => {
     lastTap = { t:now, id:it.id, hop:hopIdx };
     if (cellEl && !it.lock){
       // shade squares: a press toggles one square, dragging paints the same way across more squares
-      const i = +cellEl.dataset.cell, val = it.f[i] === '1' ? '0' : '1';
+      // each square takes the brush colour (blue or yellow, never both); pressing on a square already that colour clears instead
+      const i = +cellEl.dataset.cell, bit = it.two && it.brush === '2' ? 2 : 1;
       S.sel = new Set([it.id]); e.preventDefault();
-      D = { mode:'paint', id:it.id, val, pre:begin() };
+      D = { mode:'paint', id:it.id, bit, set:(+it.f[i]) !== bit, pre:begin() };
       pgPaint(i);
+      return;
+    }
+    if (amEl && !it.lock){
+      S.sel = new Set([it.id]); e.preventDefault();
+      if (amEl.dataset.ambrush){ act(() => put([{ ...it, brush:amEl.dataset.ambrush }])); return; }
+      if (amEl.dataset.amstep){ const [key, d] = amEl.dataset.amstep.split(':'); amStep(it, key, +d); return; }
+      // a section of the bottom side = a column (blue), of the left side = a row (yellow);
+      // inside the square, the Vertical / Horizontal choice decides
+      let kind, idx;
+      if (amEl.dataset.amcol !== undefined){ kind = 'c'; idx = +amEl.dataset.amcol; }
+      else if (amEl.dataset.amrow !== undefined){ kind = 'r'; idx = +amEl.dataset.amrow; }
+      else { const [ci, rj] = amEl.dataset.amcell.split(',').map(Number); kind = (it.brush || 'v') === 'v' ? 'c' : 'r'; idx = kind === 'c' ? ci : rj; }
+      D = { mode:'ampaint', id:it.id, kind, set:(kind === 'c' ? it.cs : it.rs)[idx] !== '1', pre:begin() };
+      amPaint(idx);
+      return;
+    }
+    const brushEl = it.k === 'pg' && e.target.closest('[data-pgbrush]');
+    if (brushEl && !it.lock){
+      // choose the colour to shade with
+      S.sel = new Set([it.id]);
+      act(() => put([{ ...it, brush:brushEl.dataset.pgbrush }]));
       return;
     }
     const dotEl = e.target.closest('[data-box]');
@@ -1561,7 +1802,7 @@ svg.addEventListener('pointerdown', e => {
     const ids = [...S.sel].filter(id => S.items[id] && !S.items[id].lock);
     if (ids.length) startMove(p, ids, begin(), false);
     // a click (not a drag) on a percent grid's value button switches percent / fraction / decimal
-    if (it.k === 'pg' && e.target.closest('[data-pgbtn]')){
+    if ((it.k === 'pg' || it.k === 'am') && e.target.closest('[data-pgbtn]')){
       if (D && D.mode === 'move') D.pgBtn = it.id; else pgCycle(it.id);
     }
   } else {
@@ -1575,7 +1816,7 @@ svg.addEventListener('pointerdown', e => {
 function dbl(it){
   if (it.lock) return;
   if (it.k === 'ctr' || AL[it.k]) act(() => { const n = { ...it }; if (n.neg) delete n.neg; else n.neg = true; put([n]); });
-  else if (it.k === 'txt' || it.k === 'nl' || it.k === 'xd' || it.k === 'pg') editItem(it);
+  else if (['txt','nl','xd','pg','am'].includes(it.k)) editItem(it);
 }
 
 function eraseAt(e){
@@ -1599,6 +1840,7 @@ window.addEventListener('pointermove', e => {
   if (e.target.closest && e.target.closest('#stage')) sendCursor(e);
   if (!D) return;
   if (D.mode === 'pinch'){ if (touches.size >= 2) pinchMove(); return; }
+  if (D.mode === 'ampaint'){ amPaint(amIndexAt(e, D.id, D.kind)); return; }
   if (D.mode === 'paint'){
     const el = document.elementFromPoint(e.clientX, e.clientY), c = el && el.closest && el.closest('[data-cell]');
     const g = c && c.closest('#items > g');
@@ -1784,7 +2026,7 @@ function endPointer(e){
     }
     dirty(); return;
   }
-  if (d.mode === 'paint'){ if (S.items[d.id]) put([S.items[d.id]]); commit(d.pre); return; }
+  if (d.mode === 'paint' || d.mode === 'ampaint'){ if (S.items[d.id]) put([S.items[d.id]]); commit(d.pre); return; }
   if (d.mode === 'move'){
     if (!d.moved){ if (d.pgBtn) pgCycle(d.pgBtn); return; }
     if (e && e.type === 'pointerup' && overTray(e)){
@@ -2094,7 +2336,8 @@ $('#helpBtn').onclick = () => openDlg(`<h2>How to use Edutorium Live</h2><div cl
     <li><b>Pen:</b> choose <b>Freehand</b> or <b>Line</b> next to the colours. Line draws a straight line from where you press to where you let go (Shift snaps it to 15° steps). In Freehand, hold Shift for a straight line.</li>
     <li><b>Hops:</b> drag a <b style="color:#2563eb">+ hop</b> or <b style="color:#dc2626">− hop</b> from <b>Number lines</b> onto a number line, type its value and press Enter (the + or − is added for you). Drag the arc to slide the hop along the line, the dot to move its start, or the arrowhead to move its end. Click a hop's label to change its value or delete it (×). On Intervals, hops snap to the marks. The eraser rubs hops out too.</li>
     <li><b>Isometric dots:</b> with this background, pattern blocks snap their corners onto the dots and rotate 60° at a time so they stay on the dots.</li>
-    <li><b>Percent grids:</b> click squares on a Hundred grid or Ten strip to shade them, or drag across them. Click the value button underneath to switch between percent, fraction and decimal. Double-click the frame (or Edit) to change the size; <b>Clear shading</b> empties it.</li>
+    <li><b>FDP grids</b> (fraction, decimal, percent): click squares on a Hundred grid or Ten strip to shade them, or drag across them. Click the value button underneath to switch between percent, fraction and decimal. <b>Two colours</b> adds Blue and Yellow buttons on the grid (each square is one colour), and the value button shows both amounts. <b>One colour</b> switches back. Double-click the frame (or Edit) to change the size; <b>Clear shading</b> empties it.</li>
+    <li><b>Area model</b> (for multiplying): it starts blank. Build each side with the − / + buttons: <b>length</b> (whole units) and <b>split each</b> (parts in each whole), for x along the bottom and y up the left. Click sections of the bottom to shade columns blue and of the left side to shade rows yellow; the overlap turns green and the button shows the multiplication (3 × 4 = 12, 1/2 × 1/4 = 1/8). Inside the rectangle, the Vertical / Horizontal buttons choose what a click shades. Click the button to switch fraction, decimal and percent.</li>
     <li><b>Exploding Dots:</b> drag dots and anti-dots into the boxes of a dot machine. Drag a dot one box to the left to explode (10 dots become 1 on the left, or the machine's own rule), one box to the right to unexplode, or off the machine to remove it. A dashed orange box is ready to explode. Double-click the machine to change its boxes, its rule, or fill it with a number.</li>
     <li><b>Background:</b> choose blank, dots, a square grid, a coordinate grid or isometric dots.</li>
     <li><b>Save:</b> save a picture to hand in, or save a board file and open it again later.</li>
