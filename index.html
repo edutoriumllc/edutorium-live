@@ -82,6 +82,9 @@ main{display:grid;grid-template-columns:224px minmax(0,1fr);min-height:0}
 .tile.kkt{min-height:0;padding:5px 0 4px;gap:2px;background:#ffffff;border-color:#e3e6eb;color:#4b5563}
 .tile.kkt:hover{border-color:var(--accent)}
 .hoprow{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.ctsizes{grid-column:1/-1;display:flex;gap:2px;padding:2px;background:var(--chip);border-radius:10px}
+.ctsize{flex:1;height:30px;border:0;border-radius:8px;background:transparent;font:inherit;font-size:12.5px;font-weight:700;color:var(--muted);cursor:pointer}
+.ctsize.on{background:var(--panel);color:var(--accent);box-shadow:0 0 0 1px var(--line)}
 .tile.hopt{min-height:0;padding:6px 4px;background:#fcfbf7;border-color:#e3e6eb;color:#4b5563}
 .tile.hopt:hover{border-color:var(--accent)}
 .hopedit{position:fixed;z-index:55;transform:translate(-50%,-50%);display:flex;align-items:center;gap:2px;background:#fff;border:2px solid currentColor;
@@ -223,7 +226,9 @@ body.embed .brand,body.embed #helpBtn{display:none}
     <svg id="board" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid meet" aria-label="Math board">
       <defs>
         <pattern id="dots" width="40" height="40" patternUnits="userSpaceOnUse"><circle cx="20" cy="20" r="1.7" fill="#d3d9e2"/></pattern>
-        <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#dce2ea" stroke-width="1.5"/></pattern>
+        <!-- square grids at real sizes for the color tiles: 1 inch = 60, 1 cm = 60/2.54 -->
+        <pattern id="gridin" width="60" height="60" patternUnits="userSpaceOnUse"><path d="M60 0H0V60" fill="none" stroke="#cfd7e2" stroke-width="1.6"/></pattern>
+        <pattern id="gridcm" width="23.622047" height="23.622047" patternUnits="userSpaceOnUse"><path d="M23.622047 0H0V23.622047" fill="none" stroke="#d9e0e9" stroke-width="1.1"/></pattern>
         <pattern id="cgrid" width="50" height="50" patternUnits="userSpaceOnUse"><path d="M50 0H0V50" fill="none" stroke="#dde3eb" stroke-width="1.5"/></pattern>
         <!-- isometric dots 30 apart: pattern blocks (side 60) sit exactly on them -->
         <pattern id="iso" width="30" height="51.9615" patternUnits="userSpaceOnUse"><g fill="#bcc4d0"><circle cx="0" cy="0" r="2.2"/><circle cx="30" cy="0" r="2.2"/><circle cx="15" cy="25.98" r="2.2"/><circle cx="0" cy="51.9615" r="2.2"/><circle cx="30" cy="51.9615" r="2.2"/></g></pattern>
@@ -280,7 +285,8 @@ const ME = { id: 'u' + rid(), name: (ls.get('mml-name') || '').slice(0,20),
              color: PEOPLE_COLORS[Math.floor(Math.random()*PEOPLE_COLORS.length)] };
 
 const S = { items:{}, sel:new Set(), tool:'select', ink:'#1f2937',
-            labels: ls.get('mml-names') === '1', bg:null, startBg:'dots', values: ls.get('mml-values') === '1', start:null };
+            labels: ls.get('mml-names') === '1', bg:null, startBg:'dots', values: ls.get('mml-values') === '1', start:null,
+            ctu: ls.get('mml-ctu') === 'cm' ? 'cm' : 'in' };   // ctu = the color tile size chosen in the tray
 
 /* ---------- colour helpers ---------- */
 function mix(a, b, t){
@@ -315,6 +321,39 @@ const SH = {
   thin: {n:'Thin rhombus', c:'#E8D5A8', p:[[51.96,0],[111.96,0],[60,30],[0,30]]}
 };
 for (const s of Object.values(SH)) s.bb = { w:Math.max(...s.p.map(q=>q[0])), h:Math.max(...s.p.map(q=>q[1])) };
+/* Tangrams: the 7 pieces cut from one square (side 240): 2 large triangles, 1 medium, 2 small, a square and a
+   parallelogram. All orange to start; each piece's color can be changed (c). fl = mirrored (the parallelogram's flip). */
+const TG = {
+  big: { n:'Large triangle',  p:[[0,0],[240,0],[120,120]] },
+  mid: { n:'Medium triangle', p:[[0,0],[120,0],[0,120]] },
+  sm:  { n:'Small triangle',  p:[[0,0],[120,0],[60,60]] },
+  sq:  { n:'Square',          p:[[60,0],[120,60],[60,120],[0,60]] },
+  par: { n:'Parallelogram',   p:[[0,0],[120,0],[180,60],[60,60]] }
+};
+for (const s of Object.values(TG)) s.bb = { w:Math.max(...s.p.map(q=>q[0])), h:Math.max(...s.p.map(q=>q[1])) };
+const TG_ORANGE = '#F39C33';
+const TG_SWATCHES = ['#F39C33','#E4572E','#F7C744','#62BF84','#2DB3C9','#4F95DB','#9B6BD9','#E7609E','#8D6E63','#64748B'];
+// the whole set laid out as the 240 × 240 square (corners of each piece, in order)
+const TG_SET = [
+  ['big', [[0,0],[240,0],[120,120]]], ['big', [[0,0],[120,120],[0,240]]], ['mid', [[240,120],[240,240],[120,240]]],
+  ['sm', [[240,0],[240,120],[180,60]]], ['sq', [[120,120],[180,60],[240,120],[180,180]]],
+  ['sm', [[120,120],[180,180],[60,180]]], ['par', [[0,240],[60,180],[180,180],[120,240]]]
+];
+// the turn (a multiple of 45°), mirror and position that put a piece exactly on the given corners
+function tgFit(s, target){
+  const t = TG[s], { w, h } = t.bb, tc = target.reduce((a, q) => [a[0] + q[0]/target.length, a[1] + q[1]/target.length], [0, 0]);
+  for (const fl of [false, true]) for (let r = 0; r < 360; r += 45){
+    const a = r*Math.PI/180, c = Math.cos(a), sn = Math.sin(a);
+    const rel = t.p.map(([x, y]) => { const px = (fl ? w - x : x) - w/2, py = y - h/2; return [px*c - py*sn, px*sn + py*c]; });
+    const rc = rel.reduce((a2, q) => [a2[0] + q[0]/rel.length, a2[1] + q[1]/rel.length], [0, 0]);
+    const cx = tc[0] - rc[0], cy = tc[1] - rc[1];
+    if (rel.every(([x, y]) => target.some(q => Math.hypot(q[0] - (cx + x), q[1] - (cy + y)) < 0.6))) return { x:cx - w/2, y:cy - h/2, r, fl };
+  }
+  return null;
+}
+/* Color tiles: squares in red, blue, yellow and green, 1 inch or 1 cm on a side (1 inch = 60 on the board, so 1 cm = 60/2.54). */
+const CT_COL = { r:'#E4572E', b:'#2F6FD6', y:'#F7C744', g:'#3FA34D' }, CT_NAME = { r:'Red', b:'Blue', y:'Yellow', g:'Green' };
+const CT_SIZE = { in:60, cm:60/2.54 };
 
 /* isometric dot grid: dots 30 apart in rows 25.98 apart, every other row shifted 15 (same as the "iso" pattern).
    Pattern block sides are 60 = two dot gaps, so their corners can sit exactly on dots. */
@@ -348,6 +387,13 @@ function isoSnap(list){
   const s = isoShift(list); if (!s) return list;
   return list.map(i => ({ ...i, x:i.x + s.dx, y:i.y + s.dy }));
 }
+// color tiles click onto the inch or centimeter grid: the first tile's corner lands on a grid corner, the rest keep their places next to it
+function gridShift(list){
+  const st = gridStep(); if (!st) return null;
+  const t = list.find(i => i.k === 'ct'); if (!t) return null;
+  return { dx:Math.round(t.x/st)*st - t.x, dy:Math.round(t.y/st)*st - t.y };
+}
+function bgSnap(list){ list = isoSnap(list); const s = gridShift(list); return s ? list.map(i => ({ ...i, x:i.x + s.dx, y:i.y + s.dy })) : list; }
 const PARTS = [1,2,3,4,5,6,8,10,12];
 /* Taptinita (from code/taptinita): base-10 figure (220 × 310 viewBox) drawn at 2×, and its four seeds.
    corn = ones, peas = tens, beans = hundreds, lupins = thousands, as in the app's default order. */
@@ -451,7 +497,7 @@ function kkPath(n){
   return d;
 }
 const MAT = new Set(['tf','nl','tap','amx','aeq','apr','avol']);
-const KINDS = new Set(['b1','b10','b100','b1000','f','rod','a1','ax','ax2','ctr','tf','sh','nl','txt','ink','tap','corn','pea','bean','lupin','xd','pg','am','kk','ab','amx','aeq','apr','avol']);
+const KINDS = new Set(['b1','b10','b100','b1000','f','rod','a1','ax','ax2','ctr','tf','sh','nl','txt','ink','tap','corn','pea','bean','lupin','xd','pg','am','kk','ab','amx','aeq','apr','avol','tg','ct']);
 
 function size(it){
   const k = it.k;
@@ -461,7 +507,7 @@ function size(it){
   switch (k) {
     case 'tap': return { w:220*TAP, h:310*TAP };
     case 'xd':  return { w:2*XD_PAD + it.n*XD_BOX + (it.n - 1)*XD_GAP, h:XD_HEAD + XD_BOX + XD_FOOT };
-    case 'am':  return { w:AM_L + AM_S + AM_R, h:AM_T + AM_S + AM_B + AM_RB };
+    case 'am':  { const a = it.sz || AM_S; return { w:AM_L + Math.max(a, 300) + AM_R, h:AM_T + a + AM_B + AM_RB }; }   // sz = the square's size (drag its corner)
     case 'kk':  return { w:KK_W, h:KK_H };
     case 'ab':  {
       const [W, Dp, H] = abDims(it), k = Dp*AB_K;
@@ -477,6 +523,8 @@ function size(it){
     case 'ctr': return { w:44, h:44 };
     case 'tf':  return { w:320, h:140 };
     case 'sh':  return SH[it.s].bb;
+    case 'tg':  return TG[it.s].bb;
+    case 'ct':  { const a = CT_SIZE[it.u] || 60; return { w:a, h:a }; }
     case 'nl':  return { w:it.w, h:96 };
     case 'txt': return { w:Math.max(30, [...it.text].length*it.fs*0.56), h:it.fs*1.3 };
     case 'ink': return { w:it.w, h:it.h };
@@ -601,8 +649,8 @@ function inner(it, L = S.labels){
       (L ? `<text x="${KK_W/2}" y="${KK_H - 6}" font-size="15" font-weight="700" fill="#64748b" text-anchor="middle">${it.n}</text>` : '');
   }
   if (k === 'am'){
-    const { w, h } = size(it), ox = AM_L, oy = AM_T + AM_S;            // origin: bottom-left corner
-    const nx = it.xw*it.xp, ny = it.yw*it.yp, u = AM_S / Math.max(it.xw, it.yw, 1);
+    const AS = it.sz || AM_S, { w, h } = size(it), ox = AM_L, oy = AM_T + AS;            // origin: bottom-left corner
+    const nx = it.xw*it.xp, ny = it.yw*it.yp, u = AS / Math.max(it.xw, it.yw, 1);
     const W = it.xw*u, H = it.yw*u, cw = nx ? W/nx : 0, rh = ny ? H/ny : 0;
     let s = `<rect x="1" y="1" width="${w - 2}" height="${h - 2}" rx="10" fill="#e8edf3" stroke="#64748b" stroke-width="2"/>`;
     // what a click inside the square shades: whole columns (vertical, blue) or whole rows (horizontal, yellow)
@@ -614,13 +662,17 @@ function inner(it, L = S.labels){
     };
     s += chip('v', ox, 'Vertical', 1) + chip('h', ox + 136, 'Horizontal', 2);
     // open axes: the x axis along the bottom, the y axis up the left
-    s += `<rect x="${ox}" y="${AM_T}" width="${AM_S}" height="${AM_S}" fill="#fcfbf7" stroke="#cbd5e1" stroke-dasharray="6 6" pointer-events="none"/>`+
-         `<path d="M${ox} ${oy}H${ox + AM_S + 14}M${ox} ${oy}V${AM_T - 6}" stroke="#1f2937" stroke-width="2.5" pointer-events="none"/>`+
-         `<path d="M${ox + AM_S + 18} ${oy}l-10 -5v10zM${ox} ${AM_T - 10}l-5 10h10z" fill="#1f2937" pointer-events="none"/>`+
-         `<text x="${ox + AM_S + 12}" y="${oy - 8}" font-size="15" font-style="italic" font-weight="700" fill="#475569" pointer-events="none">x</text>`+
+    s += `<rect x="${ox}" y="${AM_T}" width="${AS}" height="${AS}" fill="#fcfbf7" stroke="#cbd5e1" stroke-dasharray="6 6" pointer-events="none"/>`+
+         `<path d="M${ox} ${oy}H${ox + AS + 14}M${ox} ${oy}V${AM_T - 6}" stroke="#1f2937" stroke-width="2.5" pointer-events="none"/>`+
+         `<path d="M${ox + AS + 18} ${oy}l-10 -5v10zM${ox} ${AM_T - 10}l-5 10h10z" fill="#1f2937" pointer-events="none"/>`+
+         `<text x="${ox + AS + 12}" y="${oy - 8}" font-size="15" font-style="italic" font-weight="700" fill="#475569" pointer-events="none">x</text>`+
          `<text x="${ox + 9}" y="${AM_T}" font-size="15" font-style="italic" font-weight="700" fill="#475569" pointer-events="none">y</text>`;
-    if (!nx && !ny) s += `<text x="${ox + AM_S/2}" y="${AM_T + AM_S/2 - 8}" font-size="15" font-weight="600" fill="#64748b" text-anchor="middle" pointer-events="none">Build the sides with</text>`+
-                         `<text x="${ox + AM_S/2}" y="${AM_T + AM_S/2 + 14}" font-size="15" font-weight="600" fill="#64748b" text-anchor="middle" pointer-events="none">− / + for x (bottom) and y (left)</text>`;
+    if (!nx && !ny) s += `<text x="${ox + AS/2}" y="${AM_T + AS/2 - 8}" font-size="15" font-weight="600" fill="#64748b" text-anchor="middle" pointer-events="none">Build the sides with</text>`+
+                         `<text x="${ox + AS/2}" y="${AM_T + AS/2 + 14}" font-size="15" font-weight="600" fill="#64748b" text-anchor="middle" pointer-events="none">− / + for x (bottom) and y (left)</text>`;
+    // the square's top-right corner: drag it to make the model bigger or smaller
+    s += `<g data-amresize="1" style="cursor:nesw-resize"><circle cx="${ox + AS}" cy="${AM_T}" r="16" fill="transparent"/>`+
+         `<rect x="${ox + AS - 9}" y="${AM_T - 9}" width="18" height="18" rx="4" fill="#ffffff" stroke="#3b82f6" stroke-width="2"/>`+
+         `<path d="M${ox + AS - 4} ${AM_T + 4}l8 -8M${ox + AS - 1} ${AM_T - 4}h3v3M${ox + AS - 4} ${AM_T + 1}v3h3" stroke="#3b82f6" stroke-width="1.6" fill="none" stroke-linecap="round"/></g>`;
     // the pieces (once both sides exist): blue where the column is shaded, yellow where the row is, green where both are
     if (nx && ny){
       for (let i = 0; i < nx; i++) for (let j = 0; j < ny; j++){
@@ -757,6 +809,14 @@ function inner(it, L = S.labels){
     m.push([10,70,310,70]);
     return `<rect x="1" y="1" width="318" height="138" rx="10" fill="#ffffff" stroke="#6b7280" stroke-width="2"/><rect x="10" y="10" width="300" height="120" fill="none" stroke="#374151" stroke-width="2.5"/><path d="${segs(m)}" stroke="#374151" stroke-width="2"/>`;
   }
+  if (k === 'tg'){
+    const t = TG[it.s], c = col(it.c || TG_ORANGE), pts = t.p.map(([x, y]) => (it.fl ? t.bb.w - x : x) + ',' + y).join(' ');
+    return `<polygon points="${pts}" fill="${c}" stroke="${mix(c,'#000000',.45)}" stroke-width="2" stroke-linejoin="round"/>`;
+  }
+  if (k === 'ct'){
+    const a = CT_SIZE[it.u] || 60, c = CT_COL[it.c] || CT_COL.r;
+    return `<rect x="1" y="1" width="${a - 2}" height="${a - 2}" rx="${a > 40 ? 4 : 2}" fill="${c}" stroke="${mix(c,'#000000',.4)}" stroke-width="${a > 40 ? 2 : 1.4}"/>`;
+  }
   if (k === 'sh'){
     const sh = SH[it.s];
     return `<polygon points="${sh.p.map(q=>q.join(',')).join(' ')}" fill="${sh.c}" stroke="${mix(sh.c,'#000000',.45)}" stroke-width="2" stroke-linejoin="round"/>`;
@@ -774,7 +834,7 @@ function inner(it, L = S.labels){
         else if (small) s += `<text x="${x}" y="${y+40}" font-size="14" fill="#4b5563" text-anchor="middle">${mixedText(it.min*p + i, p).replace('-','−')}</text>`;
       }
     }
-    return s + hopsSVG(it);
+    return s + hopsSVG(it) + ptsSVG(it);
   }
   if (k === 'txt'){
     const { w, h } = size(it);
@@ -805,6 +865,38 @@ function hopsSVG(it){
            `<g data-part="start"><circle cx="${xa}" cy="${NL_Y}" r="6.5" fill="#ffffff" stroke="${c}" stroke-width="3"/><circle cx="${xa}" cy="${NL_Y}" r="15" fill="transparent"/></g></g>`;
   }).join('');
 }
+/* points: dots placed on a number line, stored like hops as a fraction of the line (a) with a label (t).
+   On an Intervals line they snap to the marks and are labelled with their value; the label can be changed or cleared. */
+const PT_C = '#7c3aed';
+function ptsSVG(it){
+  const x1 = it.w - NL_X0;
+  return (it.pt || []).map((q, i) => {
+    const x = NL_X0 + (x1 - NL_X0)*q.a;
+    return `<g data-pt="${i}" style="cursor:ew-resize"><circle cx="${x}" cy="${NL_Y}" r="16" fill="transparent"/>`+
+           `<circle cx="${x}" cy="${NL_Y}" r="9" fill="${PT_C}" stroke="#ffffff" stroke-width="2.5"/>`+
+           (q.t ? `<text x="${x}" y="${NL_Y - 18}" font-size="22" font-weight="800" fill="${PT_C}" stroke="#fcfbf7" stroke-width="5" paint-order="stroke" text-anchor="middle">${esc(q.t)}</text>` : '') + `</g>`;
+  }).join('');
+}
+// a point's label: its value on an Intervals line (−2, 3/4, 1 1/2), nothing on an open line
+function ptLabel(it, a){
+  if (it.open) return '';
+  const T = (it.max - it.min)*it.p, n = Math.round(it.min*it.p + a*T);
+  return (n < 0 ? '−' : '') + mixedText(Math.abs(n), it.p);
+}
+function editPt(it, i){
+  const q = it.pt && it.pt[i]; if (!q) return;
+  const val = ptLabel(it, q.a);
+  openDlg(`<h2>Point</h2><p>Type a label for the point, such as A or 2.5, or leave it empty.${val ? ` On this line the point is at <b>${esc(val)}</b>.` : ''}</p>
+    <label for="ptT">Label</label><input id="ptT" name="t" maxlength="12" value="${esc(q.t)}" autocomplete="off" autofocus placeholder="${val ? esc(val) : 'A'}">
+    <menu><button class="btn primary" value="ok">Save</button><button class="btn danger" value="del">Delete point</button><button type="button" class="btn" onclick="this.closest('dialog').close()">Cancel</button></menu>`,
+    (v, fd) => {
+      const cur = S.items[it.id]; if (!cur || !cur.pt || !cur.pt[i]) return;
+      const pt = cur.pt.slice();
+      if (v === 'del') pt.splice(i, 1); else pt[i] = { ...pt[i], t:String(fd.get('t') || '').trim().slice(0,12) };
+      act(() => put([{ ...cur, pt }]));
+    });
+}
+function dropPt(it, i){ const pt = (it.pt || []).slice(); pt.splice(i, 1); put([{ ...it, pt }]); }
 // board point -> the number line's own coordinates (works for turned lines too)
 function toLocal(it, p){
   const { w, h } = size(it), cx = it.x + w/2, cy = it.y + h/2, a = -(it.r || 0)*Math.PI/180, dx = p.x - cx, dy = p.y - cy;
@@ -1086,9 +1178,14 @@ function clean(o){
     case 'f':   it.n = FDEN.includes(+o.n) ? +o.n : 1; break;
     case 'rod': it.n = Math.round(num(o.n,1,1,10)); break;
     case 'sh':  it.s = Object.prototype.hasOwnProperty.call(SH, o.s) ? o.s : 'tri'; break;
+    case 'tg':  it.s = Object.prototype.hasOwnProperty.call(TG, o.s) ? o.s : 'big';
+                if (/^#[0-9a-f]{6}$/i.test(o.c || '') && o.c.toUpperCase() !== TG_ORANGE) it.c = o.c; if (o.fl) it.fl = true; break;
+    case 'ct':  it.c = Object.prototype.hasOwnProperty.call(CT_COL, o.c) ? o.c : 'r'; it.u = o.u === 'cm' ? 'cm' : 'in'; break;
     case 'nl':  if (o.open) it.open = true;
                 if (Array.isArray(o.hops) && o.hops.length)
                   it.hops = o.hops.slice(0,60).map(h => ({ a:num(h && h.a,0,0,1), b:num(h && h.b,0,0,1), t:String((h && h.t) || '').slice(0,12) }));
+                if (Array.isArray(o.pt) && o.pt.length)   // points on the line: where (0–1 along it) and a label
+                  it.pt = o.pt.slice(0,60).map(q => ({ a:num(q && q.a,0,0,1), t:String((q && q.t) || '').slice(0,12) }));
                 it.min =Math.round(num(o.min,0,-1000,1000)); it.max = Math.round(num(o.max,10,it.min+1,it.min+240));
                 it.p = PARTS.includes(+o.p) ? +o.p : 1; it.w = num(o.w,1200,400,1560); break;
     case 'txt': it.text = String(o.text || '').slice(0,80); it.fs = [24,32,48,64].includes(+o.fs) ? +o.fs : 32; it.c = col(o.c); break;
@@ -1107,6 +1204,7 @@ function clean(o){
       it.rs = String(o.rs || '').replace(/[^01]/g, '').slice(0, it.yw*it.yp).padEnd(it.yw*it.yp, '0');
       it.brush = o.brush === 'h' ? 'h' : 'v';
       it.show = PG_SHOW.includes(o.show) ? o.show : 'frac';
+      if (o.sz && +o.sz !== AM_S) it.sz = Math.round(num(o.sz, AM_S, 200, 900));
       break;
     case 'pg':
       it.rows = Math.round(num(o.rows,10,1,12)); it.cols = Math.round(num(o.cols,10,1,12));
@@ -1152,6 +1250,8 @@ function tpl(pid){
   if (pid === 'pg100') return { k:'pg', rows:10, cols:10, f:'0'.repeat(100), show:'pct' };
   if (pid === 'pg10') return { k:'pg', rows:10, cols:1, f:'0'.repeat(10), show:'pct' };
   if (pid.startsWith('sh-')) return { k:'sh', s:pid.slice(3) };
+  if (pid.startsWith('tg-')) return { k:'tg', s:pid.slice(3) };
+  if (pid.startsWith('ct-')){ const [, c, u] = pid.split('-'); return { k:'ct', c, u:u || S.ctu }; }   // the size chosen in the tray
   if (pid === 'nl') return { k:'nl', min:0, max:10, p:1, w:1200 };
   if (pid === 'nlo') return { k:'nl', open:true, min:0, max:10, p:1, w:1200 };
   return null;
@@ -1171,7 +1271,9 @@ const GROUPS = [
   { id:'blocks3d', name:'3D algebra blocks', tiles:Object.keys(AB).map(t => ['ab-' + t, AB[t].t]) },
   { id:'mats', name:'Algebra mats', tiles:Object.keys(MATS).map(m => [m, MATS[m].name]) },
   { id:'patternblocks', name:'Pattern Blocks', tiles:Object.keys(SH).map(s => ['sh-'+s, SH[s].n]) },
-  { id:'lines', name:'Number lines', line:true, tiles:[['nl','Intervals'],['nlo','Open number line'],['hopp','+ hop'],['hopm','− hop']] }
+  { id:'tangrams', name:'Tangrams', tiles:[['tgset','Tangram (7 pieces)']] },   // the whole set only; each piece moves on its own once placed
+  { id:'colortiles', name:'Color tiles', tiles:Object.keys(CT_COL).map(c => ['ct-' + c, CT_NAME[c]]) },
+  { id:'lines', name:'Number lines', line:true, tiles:[['nl','Intervals'],['nlo','Open number line'],['hopp','+ hop'],['hopm','− hop'],['nlpt','Point']] }
 ];
 
 function buildTray(){
@@ -1182,6 +1284,11 @@ function buildTray(){
     if (want.length && !want.includes(g.id)) continue;
     html += `<details open><summary>${g.name}</summary><div class="tiles${g.wall?' wall':''}${g.line || g.xd ? ' lines' : ''}">`;
     let hopRow = '';
+    if (g.id === 'colortiles'){
+      // one size at a time: 1 inch or 1 cm squares
+      const sw = (u, t) => `<button type="button" class="ctsize${S.ctu === u ? ' on' : ''}" data-ctu="${u}" aria-pressed="${S.ctu === u}">${t}</button>`;
+      html += `<div class="ctsizes" role="group" aria-label="Color tile size">${sw('in', '1 inch')}${sw('cm', '1 cm')}</div>`;
+    }
     if (g.kak){
       // 5 across × 4 down: each row adds a five (0–4, 5–9, 10–14, 15–19)
       html = html.replace(/<div class="tiles">$/, '<div class="tiles kak">');
@@ -1223,6 +1330,12 @@ function buildTray(){
                     pic + (S.labels ? `<span>${esc(label)}</span>` : '') + `</button>`;
           continue;
         }
+        if (pid === 'nlpt'){
+          const pic = `<svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true"><path d="M2 26H38" stroke="#1f2937" stroke-width="2.2"/><circle cx="20" cy="26" r="7.5" fill="${PT_C}" stroke="#ffffff" stroke-width="2"/></svg>`;
+          hopRow += `<button type="button" class="tile hopt" data-pid="nlpt"${S.labels ? ` title="${esc(label)}"` : ''} aria-label="${esc(label)}: drag onto a number line">`+
+                    pic + (S.labels ? `<span>${esc(label)}</span>` : '') + `</button>`;
+          continue;
+        }
         const ticks = pid === 'nlo' ? '' : [...Array(11)].map((_, i) => `M${20 + i*14} 11V23`).join('');
         const pic = `<svg width="180" height="34" viewBox="0 0 180 34" aria-hidden="true"><path d="M10 17H170${ticks}" stroke="#1f2937" stroke-width="2.2" fill="none"/>`+
                     `<path d="M4 17l9-5.5v11zM176 17l-9-5.5v11z" fill="#1f2937"/></svg>`;
@@ -1230,8 +1343,15 @@ function buildTray(){
                 pic + (S.labels ? `<span>${esc(label)}</span>` : '') + `</button>`;
         continue;
       }
+      if (pid === 'tgset'){
+        // the whole tangram square, each piece outlined
+        const body = TG_SET.map(([, t]) => `<polygon points="${t.map(q => q.join(',')).join(' ')}" fill="${TG_ORANGE}" stroke="${mix(TG_ORANGE,'#000000',.45)}" stroke-width="5" stroke-linejoin="round"/>`).join('');
+        html += `<button type="button" class="tile" data-pid="tgset"${S.labels ? ` title="${esc(label)}"` : ''} aria-label="Add all 7 tangram pieces as a square">`+
+                `<svg width="50" height="50" viewBox="-4 -4 248 248" aria-hidden="true">${body}</svg>` + (S.labels ? `<span>${esc(label)}</span>` : '') + `</button>`;
+        continue;
+      }
       const it = { id:'t', x:0, y:0, r:0, ...tpl(pid) }, { w, h } = size(it);
-      const sc = g.wall ? 186/g.wall : Math.min(64/w, 46/h, 1.3);
+      const sc = g.wall ? 186/g.wall : g.id === 'colortiles' ? (S.ctu === 'cm' ? 1 : 0.62) : Math.min(64/w, 46/h, 1.3);   // color tiles: inch tiles look bigger than cm tiles
       // names under tiles and numbers on pieces only show when Names is on
       html += `<button type="button" class="tile${g.wall?' wall':''}" data-pid="${pid}"${S.labels ? ` title="${esc(label)}"` : ''} aria-label="Add ${esc(label)}">`+
               `<svg width="${(w*sc+3).toFixed(1)}" height="${(h*sc+3).toFixed(1)}" viewBox="-1.5 -1.5 ${w+3} ${h+3}" aria-hidden="true">${inner(it)}</svg>`+
@@ -1298,6 +1418,16 @@ function make(t, cx, cy){
   it.z = MAT.has(it.k) ? zBottom() : zTop();
   if (SEED[it.k]) it.r = Math.round(Math.random()*50 - 25);   // seeds lie at a slight tilt, like in Taptinita
   return it;
+}
+// all 7 tangram pieces put together as the square, centred on (cx, cy)
+function makeTgSet(cx, cy){
+  let z = zTop();
+  return TG_SET.map(([s, target]) => {
+    const f = tgFit(s, target.map(([x, y]) => [x + cx - 120, y + cy - 120]));
+    const it = { id:newId(), k:'tg', s, x:Math.round(f.x*2)/2, y:Math.round(f.y*2)/2, r:f.r, z:z++ };
+    if (f.fl) it.fl = true;
+    return it;
+  });
 }
 function bbox(it){
   const { w, h } = size(it), cx = it.x + w/2, cy = it.y + h/2, a = (it.r || 0) * Math.PI / 180;
@@ -1379,8 +1509,9 @@ function onRegion(m, r){
    Factor tiles lie end to end along the top (x tiles turned flat) and down the left, starting at the product's
    corner; together they mark out cells (top length × left length), and tiles in the product snap into a free cell
    that fits them exactly (x² in x × x, x in x × 1 turned to fit, 1 in 1 × 1). */
-const PT = { a1:[30,30], ax:[30,110], ax2:[110,110] };   // tile size when not turned
-const tileLen = i => i.k === 'a1' ? 30 : i.k === 'ax' ? 110 : null;
+// tile size when not turned; base ten blocks work the same way (ones and tens are factors, hundreds fill 10 × 10 cells)
+const PT = { a1:[30,30], ax:[30,110], ax2:[110,110], b1:[20,20], b10:[20,200], b100:[200,200] };
+const tileLen = i => ({ a1:30, ax:110, b1:20, b10:200 })[i.k] || null;
 function inMatRegion(m, r, i){ const [cx, cy] = centerOf(i), lx = cx - m.x, ly = cy - m.y; return lx >= r.x && lx <= r.x + r.w && ly >= r.y && ly <= r.y + r.h; }
 function prodFactors(m){
   const [A, B, P] = matRegions(m), [ZA, ZB] = matZones(m), tiles = Object.values(S.items).filter(i => PT[i.k]);
@@ -1397,9 +1528,9 @@ function prodLayout(){
   for (const m of Object.values(S.items)){
     if (m.k !== 'apr') continue;
     const { A, B, tiles, top, left, cols, rows } = prodFactors(m);
-    top.forEach((i, n) => {   // centre each tile on its slot; x tiles turned 90° to lie flat
+    top.forEach((i, n) => {   // centre each tile on its slot; long pieces (x tiles, tens) turned 90° to lie flat
       const [w, h] = PT[i.k], L = tileLen(i);
-      place(i, m.x + cols[n][0] + L/2 - w/2, m.y + A.y + A.h/2 - h/2, i.k === 'ax' ? 90 : 0);
+      place(i, m.x + cols[n][0] + L/2 - w/2, m.y + A.y + A.h/2 - h/2, h > w ? 90 : 0);
     });
     left.forEach((i, n) => {
       const [w, h] = PT[i.k], L = tileLen(i);
@@ -1594,7 +1725,13 @@ function matText(m){
     return `Equation mat: ${full}${full === simple ? '' : `  →  ${simple}`}`;
   }
   if (m.k === 'avol'){ const f = volState(m); return `Volume mat: (${polyStr(polyOf(f.R.w))}) × (${polyStr(polyOf(f.R.d))}) × (${polyStr(polyOf(f.R.h))}) = ${polyStr(polyOf(f.R.b))}`; }
-  return `Product mat: (${polyStr(polyOf(reg.A))}) × (${polyStr(polyOf(reg.B))}) = ${polyStr(polyOf(reg.P))}`;
+  // base ten blocks on the Product mat: the factors and product as numbers (23 × 12 = 276)
+  const btIn = r => Object.values(S.items).filter(i => BT[i.k] && i.k !== 'b1000' && inMatRegion(m, r, i)).reduce((t, i) => t + BT[i.k].v, 0);
+  const [ZA, ZB, ZP] = matZones(m), na = btIn(ZA), nb = btIn(ZB), np = btIn(ZP);
+  const alg = [reg.A, reg.B, reg.P].some(l => l.length), num = `Product mat: ${na} × ${nb} = ${np}${na*nb === np || !np ? '' : ` (${na} × ${nb} is ${na*nb})`}`;
+  if ((na || nb || np) && !alg) return num;
+  const s = `Product mat: (${polyStr(polyOf(reg.A))}) × (${polyStr(polyOf(reg.B))}) = ${polyStr(polyOf(reg.P))}`;
+  return na || nb || np ? s + ' · ' + num.replace('Product mat: ', 'base ten ') : s;
 }
 
 function fracStr(n, d){
@@ -1606,6 +1743,15 @@ function fracStr(n, d){
 }
 function valueText(list){
   const parts = [];
+  const cts = list.filter(i => i.k === 'ct');
+  if (cts.length){
+    // color tiles: how many of each color, and the area they cover
+    const desc = Object.keys(CT_COL).map(c => [c, cts.filter(i => i.c === c).length]).filter(([, n]) => n).map(([c, n]) => `${n} ${CT_NAME[c].toLowerCase()}`).join(', ');
+    const ins = cts.filter(i => i.u !== 'cm').length, cms = cts.length - ins;
+    parts.push(`Color tiles: ${desc}` + (ins ? ` · ${ins} square inch${ins === 1 ? '' : 'es'}` : '') + (cms ? ` · ${cms} square centimeter${cms === 1 ? '' : 's'}` : ''));
+  }
+  const tgs = list.filter(i => i.k === 'tg');
+  if (tgs.length) parts.push(`Tangram pieces: ${tgs.length} of 7`);
   const bt = list.filter(i => BT[i.k]);
   if (bt.length){
     const c = { b1000:0, b100:0, b10:0, b1:0 };
@@ -1660,6 +1806,7 @@ const IC = {
   rotL:'<path d="M4.5 10a5.5 5.5 0 105.5-5.5H7"/><path d="M8.5 2.5L6.5 4.5l2 2"/>',
   rotR:'<path d="M15.5 10A5.5 5.5 0 1110 4.5h3"/><path d="M11.5 2.5l2 2-2 2"/>',
   flip:'<path d="M3 7h11l-3-3M17 13H6l3 3"/>',
+  tgcol:'<circle cx="10" cy="10" r="6.5"/><path d="M10 3.5a6.5 6.5 0 000 13z" fill="currentColor"/>',
   brk:'<rect x="3" y="3" width="5" height="5" rx="1"/><rect x="12" y="3" width="5" height="5" rx="1"/><rect x="3" y="12" width="5" height="5" rx="1"/><rect x="12" y="12" width="5" height="5" rx="1"/>',
   grp:'<rect x="3" y="3" width="14" height="14" rx="2"/><path d="M7 10h6M10 7v6"/>',
   zero:'<circle cx="7" cy="10" r="4"/><circle cx="13" cy="10" r="4"/><path d="M3 17L17 3"/>',
@@ -1700,7 +1847,8 @@ function updateBar(){
   if (sig === bar._sig) return;
   bar._sig = sig;
   const b = list.some(i => !NO_TURN.has(i.k)) ? [abtn('rotL','rotL','Rotate left'), abtn('rotR','rotR','Rotate right')] : [];
-  if (list.some(i => i.k === 'ctr' || AL[i.k] || i.k === 'ab')) b.push(abtn('flip','flip','Flip'));
+  if (list.some(i => i.k === 'ctr' || AL[i.k] || i.k === 'ab' || i.k === 'tg')) b.push(abtn('flip','flip','Flip'));
+  if (list.some(i => i.k === 'tg' && !i.lock)) b.push(abtn('tgcol','tgcol','Color'));
   if (list.some(i => i.k === 'ab' && !i.lock)) b.push(abtn('abturn','abturn','Turn'));
   if (list.some(i => i.k === 'amx' && !i.lock)) b.push(abtn('matturn','rotR','Turn mat'));
   if (list.some(i => DOWN[i.k])) b.push(abtn('break','brk','Break into 10'));
@@ -1731,7 +1879,9 @@ function doAction(a){
     const turn = free.filter(i => !NO_TURN.has(i.k));
     // pattern blocks turn 30° at a time, or 60° on the isometric dots (so their corners land on dots again)
     const dir = a === 'rotL' ? -1 : 1, onlyShapes = turn.every(i => i.k === 'sh'), iso = isoOn() && turn.some(i => i.k === 'sh');
-    const step = (onlyShapes ? (iso ? 60 : 30) : 90) * dir, norm = r => ((r % 360) + 360) % 360;
+    // tangram pieces turn 45° at a time (their sides meet at 45° and 90°)
+    const onlyTg = turn.every(i => i.k === 'tg');
+    const step = (onlyTg ? 45 : onlyShapes ? (iso ? 60 : 30) : 90) * dir, norm = r => ((r % 360) + 360) % 360;
     const turnTo = i => iso && i.k === 'sh'
       ? norm(dir > 0 ? Math.floor((i.r || 0)/60)*60 + 60 : Math.ceil((i.r || 0)/60)*60 - 60)   // next 60° mark
       : norm((i.r || 0) + step);
@@ -1750,7 +1900,13 @@ function doAction(a){
     out = isoSnap(out);   // back onto the dots (does nothing on other backgrounds)
     act(() => put(out));
   } else if (a === 'flip'){
-    act(() => put(free.filter(i => i.k === 'ctr' || AL[i.k] || i.k === 'ab').map(i => { const n = { ...i }; if (n.neg) delete n.neg; else n.neg = true; return n; })));
+    act(() => put(free.filter(i => i.k === 'ctr' || AL[i.k] || i.k === 'ab' || i.k === 'tg').map(i => {
+      const n = { ...i };
+      if (i.k === 'tg'){ if (n.fl) delete n.fl; else n.fl = true; return n; }   // tangram pieces turn over (a mirror image)
+      if (n.neg) delete n.neg; else n.neg = true; return n;
+    })));
+  } else if (a === 'tgcol'){
+    tgColorDialog(free.filter(i => i.k === 'tg'));
   } else if (a === 'matturn'){
     // stacked (+ top, − bottom) ⇄ side by side (− left, + right); every piece keeps its side and its spot on it
     act(() => {
@@ -1986,6 +2142,26 @@ function editItem(it){
   else if (it.k === 'am') amDialog(it);
 }
 
+// tangram color: a swatch or any color, for the selected pieces or every tangram piece on the board
+function tgColorDialog(list){
+  if (!list.length) return;
+  const cur = list[0].c || TG_ORANGE;
+  openDlg(`<h2>Tangram color</h2><p>Pick a color for the ${list.length === 1 ? 'selected piece' : list.length + ' selected pieces'}. Orange is the starting color.</p>
+    <div class="row" style="flex-wrap:wrap;gap:6px;margin:6px 0 10px">${TG_SWATCHES.map(c => `<button type="button" class="btn" data-tgsw="${c}" title="${c}" aria-label="Color ${c}" style="flex:0 0 auto;width:38px;height:38px;padding:0;border:2px solid ${c.toLowerCase() === cur.toLowerCase() ? '#1f2937' : 'transparent'};border-radius:10px;background:${c}"></button>`).join('')}</div>
+    <label for="tgPick">Or any color</label><input type="color" id="tgPick" name="c" value="${cur}" style="width:80px;height:40px;padding:2px">
+    <label style="display:flex;align-items:center;gap:8px;font-weight:600"><input type="checkbox" name="all" style="width:auto;height:auto"> Color every tangram piece on the board</label>
+    <menu><button type="button" class="btn" onclick="this.closest('dialog').close()">Cancel</button><button class="btn primary" value="ok">Apply</button></menu>`,
+    (v, fd) => {
+      const c = String(fd.get('c') || TG_ORANGE); if (!/^#[0-9a-f]{6}$/i.test(c)) return;
+      const ids = fd.get('all') ? Object.values(S.items).filter(i => i.k === 'tg' && !i.lock).map(i => i.id) : list.map(i => i.id);
+      act(() => put(ids.map(id => S.items[id]).filter(Boolean).map(i => { const n = { ...i }; if (c.toUpperCase() === TG_ORANGE) delete n.c; else n.c = c; return n; })));
+    });
+  // a swatch fills in the color box
+  dlgForm.querySelectorAll('[data-tgsw]').forEach(b => b.onclick = () => {
+    $('#tgPick').value = b.dataset.tgsw;
+    dlgForm.querySelectorAll('[data-tgsw]').forEach(o => o.style.borderColor = o === b ? '#1f2937' : 'transparent');
+  });
+}
 function xdDialog(it){
   openDlg(`<h2>Dot machine</h2><p>Drag a dot one box to the left to explode, one box to the right to unexplode, or off the machine to remove it.</p>
     <div class="row"><div><label for="xdN">Boxes</label><select id="xdN" name="n">${opts([2,3,4,5,6].map(n => [n, n + ' boxes']), it.n)}</select></div>
@@ -2281,6 +2457,19 @@ svg.addEventListener('pointerdown', e => {
             ghost:makeGhost(`<svg width="30" height="30" viewBox="0 0 30 30"><circle cx="15" cy="15" r="11" fill="${neg ? '#ffffff' : DOT_FILL}" stroke="${DOT_EDGE}" stroke-width="${neg ? 3 : 2}"/></svg>`) };
       return;
     }
+    const ptEl = it.k === 'nl' && e.target.closest('[data-pt]');
+    if (ptEl && !it.lock){
+      // pressing on a point grabs it: drag to slide it along the line, click to edit its label
+      S.sel = new Set([it.id]); dirty(); e.preventDefault();
+      D = { mode:'ptmove', id:it.id, idx:+ptEl.dataset.pt, pre:begin(), moved:false, sx:e.clientX, sy:e.clientY };
+      return;
+    }
+    const rsEl = it.k === 'am' && e.target.closest('[data-amresize]');
+    if (rsEl && !it.lock){
+      S.sel = new Set([it.id]); dirty(); e.preventDefault();
+      D = { mode:'amsize', id:it.id, pre:begin(), moved:false, p0:p, s0:it.sz || AM_S, y0:it.y };
+      return;
+    }
     if (it.k === 'nl' && hopIdx !== null && !it.lock){
       // pressing on a hop grabs its arrow end (drag the line itself by its line or marks)
       S.sel = new Set([it.id]); dirty();
@@ -2322,6 +2511,8 @@ function eraseAt(e){
   if (it && it.k === 'ink' && !it.lock) drop([it.id]);
   const hp = el && el.closest && el.closest('[data-hop]');   // the eraser also rubs out hops
   if (it && it.k === 'nl' && hp && !it.lock) dropHop(it, +hp.dataset.hop);
+  const pe = el && el.closest && el.closest('[data-pt]');   // and points
+  if (it && it.k === 'nl' && pe && !it.lock) dropPt(it, +pe.dataset.pt);
 }
 
 let pend = new Set(), pendT = 0;
@@ -2351,7 +2542,26 @@ window.addEventListener('pointermove', e => {
     setView({ x:D.v0.x - (e.clientX - D.sx)*k, y:D.v0.y - (e.clientY - D.sy)*k });
     return;
   }
-  if (D.mode === 'newhop' || D.mode === 'newdot' || D.mode === 'xdot'){
+  if (D.mode === 'ptmove'){
+    // slide a point along its line (on Intervals it snaps to the marks)
+    const line = S.items[D.id], q = line && line.pt && line.pt[D.idx]; if (!q) return;
+    if (!D.moved && Math.hypot(e.clientX - D.sx, e.clientY - D.sy) < 4) return;
+    const a = hopFrac(line, toB(e)); if (a === q.a){ D.moved = true; return; }
+    // an empty or typed label stays as it is; a label that was the point's value follows the point
+    const auto = q.t !== '' && q.t === ptLabel(line, q.a), pt = line.pt.slice(); pt[D.idx] = { a, t:auto ? ptLabel(line, a) : q.t };
+    S.items[D.id] = { ...line, pt }; D.moved = true; dirty();
+    return;
+  }
+  if (D.mode === 'amsize'){
+    // drag the square's corner: the model grows or shrinks, keeping its bottom-left corner where it is
+    const p = toB(e), it = S.items[D.id]; if (!it) return;
+    const ns = Math.round(Math.min(900, Math.max(200, D.s0 + ((p.x - D.p0.x) - (p.y - D.p0.y))/2))/10)*10;
+    if (ns === (it.sz || AM_S)) return;
+    const n = { ...it, y:D.y0 + (D.s0 - ns) }; if (ns === AM_S) delete n.sz; else n.sz = ns;
+    S.items[D.id] = n; D.moved = true; dirty(); sendLater([D.id]);
+    return;
+  }
+  if (D.mode === 'newhop' || D.mode === 'newdot' || D.mode === 'xdot' || D.mode === 'newpt'){
     if (!D.moved && Math.hypot(e.clientX - D.sx, e.clientY - D.sy) < 6) return;
     D.moved = true; D.ghost.hidden = false;
     D.ghost.style.left = e.clientX + 'px'; D.ghost.style.top = e.clientY + 'px';
@@ -2378,7 +2588,9 @@ window.addEventListener('pointermove', e => {
   }
   if (D.mode === 'new'){
     if (Math.hypot(e.clientX - D.sx, e.clientY - D.sy) < 6) return;
-    const p = toB(e), it = make(tpl(D.pid), p.x, p.y);
+    const p = toB(e);
+    if (D.pid === 'tgset'){ const list = placeTgSet(p.x, p.y); startMove(p, list.map(i => i.id), D.pre, true); return; }
+    const it = make(tpl(D.pid), p.x, p.y);
     put([it]); S.sel = new Set([it.id]);
     startMove(p, [it.id], D.pre, true);
     return;
@@ -2427,6 +2639,11 @@ window.addEventListener('pointermove', e => {
       const sh = isoShift(D.ids.map(id => S.items[id]).filter(i => i && i.k === 'sh')
                              .map(i => ({ ...i, x:D.orig.get(i.id).x + dx, y:D.orig.get(i.id).y + dy })));
       if (sh){ dx += sh.dx; dy += sh.dy; }
+    } else {
+      // color tiles click onto an inch or centimeter grid as they move
+      const gs = gridShift(D.ids.map(id => S.items[id]).filter(i => i && i.k === 'ct')
+                                .map(i => ({ ...i, x:D.orig.get(i.id).x + dx, y:D.orig.get(i.id).y + dy })));
+      if (gs){ dx += gs.dx; dy += gs.dy; }
     }
     for (const id of D.ids){ const it = S.items[id], o = D.orig.get(id); if (!it) continue; it.x = o.x + dx; it.y = o.y + dy; }
     tray.classList.toggle('drop', overTray(e));
@@ -2476,6 +2693,23 @@ function endPointer(e){
     toast('Type a value and press Enter. Drag the arc to slide the hop, the dot to move its start.');
     return;
   }
+  if (d.mode === 'newpt'){
+    d.ghost.remove();
+    if (!d.moved){ toast('Drag the point onto a number line. Drag it again to add more points.'); return; }
+    const el = document.elementFromPoint(e.clientX, e.clientY), g = el && el.closest && el.closest('#items > g');
+    const line = g && S.items[g.dataset.id];
+    if (!line || line.k !== 'nl'){ toast('Drop the point onto a number line.'); return; }
+    if (line.lock){ toast('This number line is locked. Unlock it to add points.'); return; }
+    const a = hopFrac(line, toB(e));
+    put([{ ...line, pt:[...(line.pt || []), { a, t:'' }] }]); commit(d.pre);   // starts with no label
+    toast('Drag the point to slide it along the line. Click it to add a label or delete it.');
+    return;
+  }
+  if (d.mode === 'ptmove'){
+    if (d.moved){ put([S.items[d.id]]); commit(d.pre); } else editPt(S.items[d.id], d.idx);   // a click opens its label box
+    return;
+  }
+  if (d.mode === 'amsize'){ if (d.moved){ put([S.items[d.id]]); commit(d.pre); } return; }
   if (d.mode === 'hopend'){
     if (d.moved){ put([S.items[d.id]]); commit(d.pre); }
     else openHopEditor(d.id, d.idx);   // a click on a hop opens its value box
@@ -2483,7 +2717,8 @@ function endPointer(e){
   }
   if (d.mode === 'new'){
     // a click on a tray piece: place it near the middle of the board
-    const o = (cascade++ % 8) * 26, c = viewCenter(), it = isoSnap([make(tpl(d.pid), c.x - 80 + o, c.y - 50 + o)])[0];
+    if (d.pid === 'tgset'){ const c = viewCenter(); placeTgSet(c.x, c.y); commit(d.pre); return; }
+    const o = (cascade++ % 8) * 26, c = viewCenter(), it = bgSnap([make(tpl(d.pid), c.x - 80 + o, c.y - 50 + o)])[0];
     put([it]); S.sel = new Set([it.id]); commit(d.pre);
     return;
   }
@@ -2533,7 +2768,7 @@ function endPointer(e){
     for (const id of d.ids){
       const it = S.items[id]; if (!it) continue;
       // the board has no edges, so pieces can go anywhere (blocks snapped to dots keep their exact place)
-      if (!(isoOn() && d.ids.some(id => S.items[id] && S.items[id].k === 'sh'))){
+      if (!(isoOn() && d.ids.some(id => S.items[id] && S.items[id].k === 'sh')) && !(gridStep() && d.ids.some(id => S.items[id] && S.items[id].k === 'ct'))){
         it.x = Math.round(it.x * 2) / 2;
         it.y = Math.round(it.y * 2) / 2;
       }
@@ -2550,7 +2785,7 @@ function endPointer(e){
 window.addEventListener('pointerup', endPointer);
 window.addEventListener('pointercancel', e => {
   if (D && D.ghost) D.ghost.remove();
-  if (D && (D.mode === 'new' || D.mode === 'newhop' || D.mode === 'newdot' || D.mode === 'xdot')) { D = null; return; }
+  if (D && (D.mode === 'new' || D.mode === 'newhop' || D.mode === 'newdot' || D.mode === 'xdot' || D.mode === 'newpt')) { D = null; return; }
   endPointer(e);
 });
 function makeGhost(svgHtml){
@@ -2597,26 +2832,33 @@ function snapToTap(s){
 }
 
 tray.addEventListener('pointerdown', e => {
+  const cs = e.target.closest('[data-ctu]');
+  if (cs){ e.preventDefault(); S.ctu = cs.dataset.ctu; ls.set('mml-ctu', S.ctu); buildTray(); return; }   // color tile size
   const t = e.target.closest('.tile');
   if (!t || e.button > 0 || D) return;
   e.preventDefault();
   const pid = t.dataset.pid;
-  if (pid === 'hopp' || pid === 'hopm' || pid === 'dotp' || pid === 'dotn'){
-    // hops are dragged onto a number line, dots into a dot machine box; a picture follows the pointer
+  if (pid === 'hopp' || pid === 'hopm' || pid === 'dotp' || pid === 'dotn' || pid === 'nlpt'){
+    // hops and points are dragged onto a number line, dots into a dot machine box; a picture follows the pointer
     const ghost = makeGhost(t.querySelector('svg').outerHTML);
-    D = pid.startsWith('hop') ? { mode:'newhop', sign: pid === 'hopp' ? 1 : -1, sx:e.clientX, sy:e.clientY, pre:begin(), ghost }
+    D = pid === 'nlpt' ? { mode:'newpt', sx:e.clientX, sy:e.clientY, pre:begin(), ghost }
+      : pid.startsWith('hop') ? { mode:'newhop', sign: pid === 'hopp' ? 1 : -1, sx:e.clientX, sy:e.clientY, pre:begin(), ghost }
                               : { mode:'newdot', neg: pid === 'dotn', sx:e.clientX, sy:e.clientY, pre:begin(), ghost };
     return;
   }
   if (S.tool !== 'select') setTool('select');
   D = { mode:'new', pid, sx:e.clientX, sy:e.clientY, pre:begin() };
 });
+// the whole tangram set: dragged in or clicked, all 7 pieces arrive together as the square
+function placeTgSet(cx, cy){ const list = makeTgSet(cx, cy); put(list); S.sel = new Set(list.map(i => i.id)); return list; }
 tray.addEventListener('click', e => {
   const t = e.target.closest('.tile');
   if (!t || e.detail !== 0) return;   // keyboard activation only; pointer clicks are handled above
   if (t.dataset.pid.startsWith('hop')){ hopToolHint(); return; }
   if (t.dataset.pid.startsWith('dot')){ toast('Drag the dot into a box of a dot machine.'); return; }
-  const pre = begin(), o = (cascade++ % 8) * 26, c = viewCenter(), it = isoSnap([make(tpl(t.dataset.pid), c.x - 80 + o, c.y - 50 + o)])[0];
+  if (t.dataset.pid === 'nlpt'){ toast('Drag the point onto a number line. Drag it again to add more points.'); return; }
+  if (t.dataset.pid === 'tgset'){ const pre = begin(), c = viewCenter(); placeTgSet(c.x, c.y); commit(pre); return; }
+  const pre = begin(), o = (cascade++ % 8) * 26, c = viewCenter(), it = bgSnap([make(tpl(t.dataset.pid), c.x - 80 + o, c.y - 50 + o)])[0];
   put([it]); S.sel = new Set([it.id]); commit(pre);
 });
 bar.addEventListener('click', e => { const b = e.target.closest('[data-act]'); if (b) doAction(b.dataset.act); });
@@ -2678,13 +2920,16 @@ function replaceBoard(items){
 }
 
 /* ---------- backgrounds (part of the board: saved in links and files, shared with partners) ---------- */
-const BGS = [['blank','Blank'],['dots','Dots'],['grid','Square grid'],['coord','Coordinate grid'],['coord1','First quadrant grid'],['iso','Isometric dots']];
-const isBg = v => BGS.some(b => b[0] === v);
+const BGS = [['blank','Blank'],['dots','Dots'],['gridin','Inch grid'],['gridcm','Centimeter grid'],['coord','Coordinate grid'],['coord1','First quadrant grid'],['iso','Isometric dots']];
+const isBg = v => v === 'grid' || BGS.some(b => b[0] === v);   // 'grid' = old links and files (opens as the inch grid)
+// how far apart the lines of a square grid background are (0 when the background is not a square grid)
+const gridStep = () => S.bg === 'gridin' || S.bg === 'grid' ? 60 : S.bg === 'gridcm' ? 60/2.54 : 0;
 // every background reaches as far as the board does (BIG in each direction)
 function bgSVG(v){
   const full = f => `<rect x="${-BIG}" y="${-BIG}" width="${2*BIG}" height="${2*BIG}" fill="${f}"/>`;
   if (v === 'dots') return full('url(#dots)');
-  if (v === 'grid') return full('url(#grid)');
+  if (v === 'gridin') return full('url(#gridin)');
+  if (v === 'gridcm') return full('url(#gridcm)');
   if (v === 'iso')  return full('url(#iso)');
   if (v !== 'coord' && v !== 'coord1') return '';
   // origin at the middle of the starting view (all four quadrants) or near its bottom-left corner (first quadrant)
@@ -2701,6 +2946,7 @@ function bgSVG(v){
          `<g font-size="15" fill="#4b5563" font-weight="600">${lab}<text x="${ox - 9}" y="${oy + 22}" text-anchor="end">0</text></g>`;
 }
 function setBg(v, send = true){
+  if (v === 'grid') v = 'gridin';   // the old square grid became the inch grid
   if (!isBg(v)) v = 'dots';
   const changed = S.bg !== v;
   S.bg = v; $('#bg').innerHTML = bgSVG(v); ls.set('mml-bg', v);
@@ -2834,6 +3080,11 @@ $('#helpBtn').onclick = () => openDlg(`<h2>How to use Edutorium Live</h2><div cl
     <li><b>Taptinita:</b> drop corn, peas, beans and lupins into the pozos or the red Killa and they settle in. Several seeds can share a pozo; they shrink to fit. Moving the Taptinita moves its seeds too. Select 10 of one seed and choose <b>Group 10</b> to trade up, or select a seed and choose <b>Break into 10</b>.</li>
     <li><b>Pen:</b> choose <b>Freehand</b> or <b>Line</b> next to the colours. Line draws a straight line from where you press to where you let go (Shift snaps it to 15° steps). In Freehand, hold Shift for a straight line.</li>
     <li><b>Hops:</b> drag a <b style="color:#2563eb">+ hop</b> or <b style="color:#dc2626">− hop</b> from <b>Number lines</b> onto a number line, type its value and press Enter (the + or − is added for you). Drag the arc to slide the hop along the line, the dot to move its start, or the arrowhead to move its end. Click a hop's label to change its value or delete it (×). On Intervals, hops snap to the marks. The eraser rubs hops out too.</li>
+    <li><b>Points:</b> drag the <b style="color:#7c3aed">point</b> from <b>Number lines</b> onto a line (again for more points). On Intervals it snaps to a mark. Points start with no label: click one to add a label (such as A or its value) or delete it. Drag a point to slide it.</li>
+    <li><b>Area model size:</b> drag the blue corner at the top right of the square to make the model bigger or smaller.</li>
+    <li><b>Product mat with base ten blocks:</b> ones and tens on the top and left bands are the factors; hundreds, tens and ones in the product snap into the cells, making the rectangle. Values shows, for example, 11 × 12 = 132.</li>
+    <li><b>Tangrams:</b> the tangram arrives as the square; then move each of the 7 pieces on its own. Rotate turns 45°, Flip turns a piece over, and <b>Color</b> changes the color (orange to start).</li>
+    <li><b>Color tiles:</b> choose <b>1 inch</b> or <b>1 cm</b> above the red, blue, yellow and green tiles. On the <b>Inch grid</b> or <b>Centimeter grid</b> background (Background button), tiles snap onto the grid.</li>
     <li><b>Isometric dots:</b> with this background, pattern blocks snap their corners onto the dots and rotate 60° at a time so they stay on the dots.</li>
     <li><b>FDP grids</b> (fraction, decimal, percent): click squares on a Hundred grid or Ten strip to shade them, or drag across them. Click the value button underneath to switch between percent, fraction and decimal. <b>Two colours</b> adds Blue and Yellow buttons on the grid (each square is one colour), and the value button shows both amounts. <b>One colour</b> switches back. Double-click the frame (or Edit) to change the size; <b>Clear shading</b> empties it.</li>
     <li><b>Area model</b> (for multiplying): it starts blank. Build each side with the − / + buttons: <b>length</b> (whole units) and <b>split each</b> (parts in each whole), for x along the bottom and y up the left. Click sections of the bottom to shade columns blue and of the left side to shade rows yellow; the overlap turns green and the button shows the multiplication (3 × 4 = 12, 1/2 × 1/4 = 1/8). Inside the rectangle, the Vertical / Horizontal buttons choose what a click shades. Click the button to switch fraction, decimal and percent.</li>
