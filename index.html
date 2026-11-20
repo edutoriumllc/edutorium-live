@@ -79,9 +79,14 @@ main{display:grid;grid-template-columns:224px minmax(0,1fr);min-height:0}
 .tile.wall:hover{background:var(--chip)}
 .tiles.lines{grid-template-columns:1fr;gap:6px}
 .tiles.kak{grid-template-columns:repeat(5,1fr);gap:4px}
+.tile.dott{min-height:0;padding:6px 0}
+.tile.dott.on{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent)}
 .tile.kkt{min-height:0;padding:5px 0 4px;gap:2px;background:#ffffff;border-color:#e3e6eb;color:#4b5563}
 .tile.kkt:hover{border-color:var(--accent)}
 .hoprow{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.pmcols{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:5px;padding:2px 0}
+.pmsw{width:24px;height:24px;border-radius:7px;border:2px solid transparent;cursor:pointer;padding:0}
+.pmsw[aria-pressed="true"]{border-color:var(--text);box-shadow:0 0 0 2px var(--panel) inset}
 .ctsizes{grid-column:1/-1;display:flex;gap:2px;padding:2px;background:var(--chip);border-radius:10px}
 .ctsize{flex:1;height:30px;border:0;border-radius:8px;background:transparent;font:inherit;font-size:12.5px;font-weight:700;color:var(--muted);cursor:pointer}
 .ctsize.on{background:var(--panel);color:var(--accent);box-shadow:0 0 0 1px var(--line)}
@@ -117,6 +122,11 @@ main{display:grid;grid-template-columns:224px minmax(0,1fr);min-height:0}
 #items g{cursor:grab}
 #board.pen #items g,#board.text #items g{cursor:inherit}
 #items g.sel{filter:drop-shadow(0 0 1.5px #2563eb) drop-shadow(0 0 2.5px #2563eb)}
+#gsLayer text{paint-order:stroke;stroke:#ffffff;stroke-width:5px;stroke-linejoin:round;font-weight:700}
+#gsLayer .gsang{fill:#7c3aed;font-size:19px}
+#gsLayer .gslen{fill:#1b1f24;font-size:21px}
+#gsLayer .gsname{fill:#1b1f24;font-size:22px}
+#gsLayer .gsarc{fill:none;stroke:#7c3aed;stroke-width:2.5}
 #items g.sel.locked{filter:drop-shadow(0 0 1.5px #d97706) drop-shadow(0 0 2.5px #d97706)}
 #items g.locked{cursor:default}
 
@@ -241,6 +251,7 @@ body.embed .brand,body.embed #helpBtn{display:none}
       </defs>
       <g id="bg" pointer-events="none"></g>
       <g id="items"></g>
+      <g id="gsLayer"></g>
       <g id="guides" pointer-events="none"></g>
       <g id="grpLines" pointer-events="none"></g>
       <path id="liveInk" fill="none" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
@@ -287,7 +298,9 @@ const ME = { id: 'u' + rid(), name: (ls.get('mml-name') || '').slice(0,20),
 
 const S = { items:{}, sel:new Set(), tool:'select', ink:'#1f2937',
             labels: ls.get('mml-names') === '1', bg:null, startBg:'dots', values: ls.get('mml-values') === '1', start:null,
-            ctu: ls.get('mml-ctu') === 'cm' ? 'cm' : 'in' };   // ctu = the color tile size chosen in the tray
+            ctu: ls.get('mml-ctu') === 'cm' ? 'cm' : 'in',   // ctu = the color tile size chosen in the tray
+            gsEnds: ls.get('mml-gsends') === '1', gsHole:null,   // geo strips: new strips joinable at the ends only? / the hole or joint last clicked
+            pmOne: ls.get('mml-pmone') === '1', pmCol: /^#[0-9a-f]{6}$/i.test(ls.get('mml-pmcol') || '') ? ls.get('mml-pmcol') : '#2DB3C9' };   // pentominoes: one color?
 
 /* ---------- colour helpers ---------- */
 function mix(a, b, t){
@@ -352,7 +365,33 @@ function tgFit(s, target){
   }
   return null;
 }
+/* Pentominoes: the 12 shapes made of 5 unit squares (each square 1 inch = 60, so they match the inch grid and color tiles).
+   Each has its own color, or (a choice in the side menu, kept on this device) all one color. fl = mirrored. */
+const PM_U = 60;
+const PM = Object.fromEntries([
+  ['F','#E4572E',[[1,0],[2,0],[0,1],[1,1],[1,2]]], ['I','#F39C33',[[0,0],[0,1],[0,2],[0,3],[0,4]]],
+  ['L','#F7C744',[[0,0],[0,1],[0,2],[0,3],[1,3]]], ['N','#9CCC65',[[1,0],[1,1],[1,2],[0,2],[0,3]]],
+  ['P','#62BF84',[[0,0],[1,0],[0,1],[1,1],[0,2]]], ['T','#26A69A',[[0,0],[1,0],[2,0],[1,1],[1,2]]],
+  ['U','#2DB3C9',[[0,0],[2,0],[0,1],[1,1],[2,1]]], ['V','#4F95DB',[[0,0],[0,1],[0,2],[1,2],[2,2]]],
+  ['W','#5C6BC0',[[0,0],[0,1],[1,1],[1,2],[2,2]]], ['X','#9B6BD9',[[1,0],[0,1],[1,1],[2,1],[1,2]]],
+  ['Y','#E7609E',[[1,0],[0,1],[1,1],[1,2],[1,3]]], ['Z','#8D6E63',[[0,0],[1,0],[1,1],[1,2],[2,2]]]
+].map(([n, c, cells]) => {
+  const cw = Math.max(...cells.map(q => q[0])) + 1, ch = Math.max(...cells.map(q => q[1])) + 1;
+  return [n, { n, c, cells, cw, bb:{ w:cw*PM_U, h:ch*PM_U } }];
+}));
+const PM_SWATCHES = ['#2DB3C9','#F39C33','#E4572E','#F7C744','#62BF84','#4F95DB','#9B6BD9','#8D6E63'];
+const pmCellsXY = it => { const p = PM[it.s]; return p.cells.map(([a, b]) => [it.fl ? p.cw - 1 - a : a, b]); };
+const pmColor = it => S.pmOne ? S.pmCol : PM[it.s].c;
+// the corners of each square of a pentomino on the board (after its turn), for the no-overlap check
+function pmPolys(it){
+  const { w, h } = PM[it.s].bb, a = (it.r || 0)*Math.PI/180, c = Math.cos(a), sn = Math.sin(a), cx = it.x + w/2, cy = it.y + h/2;
+  const rot = (px, py) => { const dx = px - w/2, dy = py - h/2; return [cx + dx*c - dy*sn, cy + dx*sn + dy*c]; };
+  return pmCellsXY(it).map(([x, y]) => [[x, y], [x + 1, y], [x + 1, y + 1], [x, y + 1]].map(([u, v]) => rot(u*PM_U, v*PM_U)));
+}
 /* Color tiles: squares in red, blue, yellow and green, 1 inch or 1 cm on a side (1 inch = 60 on the board, so 1 cm = 60/2.54). */
+// the 10 colors of the Dots group (growing dot patterns)
+const DOT_COLS = [['#E4572E','Red'],['#F39C33','Orange'],['#F7C744','Yellow'],['#3FA34D','Green'],['#2DB3C9','Teal'],
+                  ['#2F6FD6','Blue'],['#8E5CD9','Purple'],['#E7609E','Pink'],['#8D6E63','Brown'],['#1F2937','Black']];
 const CT_COL = { r:'#E4572E', b:'#2F6FD6', y:'#F7C744', g:'#3FA34D' }, CT_NAME = { r:'Red', b:'Blue', y:'Yellow', g:'Green' };
 const CT_SIZE = { in:60, cm:60/2.54 };
 
@@ -391,10 +430,16 @@ function isoSnap(list){
 // color tiles click onto the inch or centimeter grid: the first tile's corner lands on a grid corner, the rest keep their places next to it
 function gridShift(list){
   const st = gridStep(); if (!st) return null;
-  const t = list.find(i => i.k === 'ct'); if (!t) return null;
+  const t = list.find(i => i.k === 'ct' || i.k === 'pm'); if (!t) return null;   // color tiles and pentominoes
   return { dx:Math.round(t.x/st)*st - t.x, dy:Math.round(t.y/st)*st - t.y };
 }
-function bgSnap(list){ list = isoSnap(list); const s = gridShift(list); return s ? list.map(i => ({ ...i, x:i.x + s.dx, y:i.y + s.dy })) : list; }
+// dots settle on their spots (dotSpot): the first dot's centre goes to the nearest spot, the rest keep their places next to it
+function dotShift(list){
+  const d = list.find(i => i.k === 'pd'); if (!d) return null;
+  const [sx, sy] = dotSpot(d.x + DOT_D/2, d.y + DOT_D/2);
+  return { dx:sx - d.x - DOT_D/2, dy:sy - d.y - DOT_D/2 };
+}
+function bgSnap(list){ list = gsSnapList(isoSnap(list)); const s = gridShift(list) || dotShift(list); return s ? list.map(i => ({ ...i, x:i.x + s.dx, y:i.y + s.dy })) : list; }
 const PARTS = [1,2,3,4,5,6,8,10,12];
 /* Taptinita (from code/taptinita): base-10 figure (220 × 310 viewBox) drawn at 2×, and its four seeds.
    corn = ones, peas = tens, beans = hundreds, lupins = thousands, as in the app's default order. */
@@ -498,7 +543,13 @@ function kkPath(n){
   return d;
 }
 const MAT = new Set(['tf','nl','tap','amx','aeq','apr','avol']);
-const KINDS = new Set(['b1','b10','b100','b1000','f','rod','a1','ax','ax2','ctr','tf','sh','nl','txt','ink','tap','corn','pea','bean','lupin','xd','pg','am','kk','ab','amx','aeq','apr','avol','tg','ct']);
+const KINDS = new Set(['b1','b10','b100','b1000','f','rod','a1','ax','ax2','ctr','tf','sh','nl','txt','ink','tap','corn','pea','bean','lupin','xd','pg','am','kk','ab','amx','aeq','apr','avol','tg','ct','pd','pm','gs']);
+/* Geo strips (original design): strips 2–10 units long with a hole every unit (GS_U = 60 = one inch-grid square, two iso-dot gaps).
+   Item {k:'gs', L, e (ends only), j:[[hole, otherId, otherHole]…] joints (kept on both strips), pn:[hole…] pins}.
+   The strip lies along its length from (x + GS_P, y + GS_P), turned r degrees about its centre like every other piece. */
+const GS_U = 60, GS_P = 14, GS_SNAP = 18;
+const GS_C = { 2:'#E4572E', 3:'#F3A712', 4:'#7CB342', 5:'#29A3DB', 6:'#5C6BC0', 7:'#AB47BC', 8:'#E84A8A', 9:'#8D6E63', 10:'#1F9E8F' };
+const GS_NM = { 3:'triangle', 4:'quadrilateral', 5:'pentagon', 6:'hexagon', 7:'heptagon', 8:'octagon', 9:'nonagon', 10:'decagon' };
 
 function size(it){
   const k = it.k;
@@ -525,7 +576,10 @@ function size(it){
     case 'tf':  return { w:320, h:140 };
     case 'sh':  return SH[it.s].bb;
     case 'tg':  return TG[it.s].bb;
+    case 'pd':  return { w:44, h:44 };   // the same size as a counter
+    case 'pm':  return PM[it.s].bb;
     case 'ct':  { const a = CT_SIZE[it.u] || 60; return { w:a, h:a }; }
+    case 'gs':  return { w:it.L*GS_U + 2*GS_P, h:2*GS_P };
     case 'nl':  return { w:it.w, h:96 };
     case 'txt': return { w:Math.max(30, [...it.text].length*it.fs*0.56), h:it.fs*1.3 };
     case 'ink': return { w:it.w, h:it.h };
@@ -547,6 +601,17 @@ function mixedText(v, p){ // v in parts of 1/p
 
 function inner(it, L = S.labels){
   const k = it.k;
+  if (k === 'gs'){
+    // a rounded strip with a hole at every unit (or only at its ends); each hole has a bigger invisible target for grabbing
+    const c = GS_C[it.L] || '#64748B', d = mix(c, '#000000', .34), len = it.L*GS_U;
+    let s = `<rect x="1" y="1" width="${len + 2*GS_P - 2}" height="${2*GS_P - 2}" rx="${GS_P - 1}" fill="${c}" stroke="${d}" stroke-width="2"/>`, hits = '';
+    for (let q = 0; q <= it.L; q++){
+      if (!gsCanJoin(it, q)) continue;
+      s += `<circle cx="${GS_P + q*GS_U}" cy="${GS_P}" r="6" fill="#ffffff" stroke="${d}" stroke-width="1.6"/>`;
+      hits += `<circle data-gsk="${q}" cx="${GS_P + q*GS_U}" cy="${GS_P}" r="15" fill="transparent" style="cursor:pointer"/>`;
+    }
+    return s + hits;
+  }
   const btName = (x, y, t, fs) => L ? `<text x="${x}" y="${y}" font-size="${fs}" font-weight="800" fill="#1b1f24" stroke="#ffffff" stroke-width="${fs/5}" paint-order="stroke" text-anchor="middle">${t}</text>` : '';
   if (k === 'b1'){ const c = BTC.b1; return `<rect x=".6" y=".6" width="18.8" height="18.8" rx="2" fill="${c}" stroke="${mix(c,'#000000',.45)}" stroke-width="1.2"/>` + btName(10, 14.5, 1, 12); }
   if (k === 'b10'){
@@ -818,6 +883,15 @@ function inner(it, L = S.labels){
   if (k === 'tg'){
     const t = TG[it.s], c = col(it.c || TG_ORANGE), pts = t.p.map(([x, y]) => (it.fl ? t.bb.w - x : x) + ',' + y).join(' ');
     return `<polygon points="${pts}" fill="${c}" stroke="${mix(c,'#000000',.45)}" stroke-width="2" stroke-linejoin="round"/>`;
+  }
+  if (k === 'pd'){
+    const c = col(it.c);
+    return `<circle cx="22" cy="22" r="20.5" fill="${c}" stroke="${mix(c,'#000000',.35)}" stroke-width="2"/>`;
+  }
+  if (k === 'pm'){
+    // a pentomino: five unit squares (each square outlined, so they can be counted)
+    const c = pmColor(it), e = mix(c,'#000000',.42);
+    return pmCellsXY(it).map(([a, b]) => `<rect x="${a*PM_U + 1}" y="${b*PM_U + 1}" width="${PM_U - 2}" height="${PM_U - 2}" rx="3" fill="${c}" stroke="${e}" stroke-width="2"/>`).join('');
   }
   if (k === 'ct'){
     const a = CT_SIZE[it.u] || 60, c = CT_COL[it.c] || CT_COL.r;
@@ -1192,6 +1266,15 @@ function clean(o){
     case 'tg':  it.s = Object.prototype.hasOwnProperty.call(TG, o.s) ? o.s : 'big';
                 if (/^#[0-9a-f]{6}$/i.test(o.c || '') && o.c.toUpperCase() !== TG_ORANGE) it.c = o.c; if (o.fl) it.fl = true; break;
     case 'ct':  it.c = Object.prototype.hasOwnProperty.call(CT_COL, o.c) ? o.c : 'r'; it.u = o.u === 'cm' ? 'cm' : 'in'; break;
+    case 'pd':  it.c = DOT_COLS.some(d => d[0] === o.c) ? o.c : DOT_COLS[0][0]; it.r = 0; break;
+    case 'pm':  it.s = Object.prototype.hasOwnProperty.call(PM, o.s) ? o.s : 'F'; if (o.fl) it.fl = true; break;
+    case 'gs':  it.L = Math.round(num(o.L,4,2,10)); if (o.e) it.e = true;
+                if (Array.isArray(o.j) && o.j.length)
+                  it.j = o.j.slice(0,40).filter(v => Array.isArray(v) && /^[\w-]{1,40}$/.test(String(v[1])))
+                             .map(v => [Math.round(num(v[0],0,0,it.L)), String(v[1]), Math.round(num(v[2],0,0,10))]);
+                if (it.j && !it.j.length) delete it.j;
+                if (Array.isArray(o.pn) && o.pn.length) it.pn = [...new Set(o.pn.slice(0,11).map(v => Math.round(num(v,0,0,it.L))))];
+                break;
     case 'nl':  if (o.open) it.open = true;
                 if (Array.isArray(o.hops) && o.hops.length)
                   it.hops = o.hops.slice(0,60).map(h => ({ a:num(h && h.a,0,0,1), b:num(h && h.b,0,0,1), t:String((h && h.t) || '').slice(0,12) }));
@@ -1262,6 +1345,9 @@ function tpl(pid){
   if (pid === 'pg10') return { k:'pg', rows:10, cols:1, f:'0'.repeat(10), show:'pct' };
   if (pid.startsWith('sh-')) return { k:'sh', s:pid.slice(3) };
   if (pid.startsWith('tg-')) return { k:'tg', s:pid.slice(3) };
+  if (pid.startsWith('pm-')) return { k:'pm', s:pid.slice(3) };
+  const gsm = pid.match(/^gs(\d+)$/); if (gsm) return S.gsEnds ? { k:'gs', L:+gsm[1], e:true } : { k:'gs', L:+gsm[1] };   // holes at the ends only, if chosen in the tray
+  if (pid.startsWith('pd:')) return { k:'pd', c:pid.slice(3) };
   if (pid.startsWith('ct-')){ const [, c, u] = pid.split('-'); return { k:'ct', c, u:u || S.ctu }; }   // the size chosen in the tray
   if (pid === 'nl') return { k:'nl', min:0, max:10, p:1, w:1200 };
   if (pid === 'nlo') return { k:'nl', open:true, min:0, max:10, p:1, w:1200 };
@@ -1278,11 +1364,14 @@ const GROUPS = [
   { id:'dots', name:'Exploding Dots', xd:true, tiles:[['xd','Dot machine'],['dotp','Dot'],['dotn','Anti-dot']] },
   { id:'kaktovik', name:'Kaktovik numerals', kak:true, tiles:[...Array(20)].map((_, n) => ['kk' + n, String(n)]) },
   { id:'counters', name:'Counters', tiles:[['ctr','Positive'],['ctrn','Negative'],['tf','Ten frame']] },
+  { id:'dotpatterns', name:'Dots', tiles:DOT_COLS.map(([c, n]) => ['pd:' + c, n]) },   // for growing dot patterns
   { id:'algebra', name:'Algebra tiles', tiles:[['a1','1'],['ax','x'],['ax2','x²'],['a1n','−1'],['axn','−x'],['ax2n','−x²']] },
   { id:'blocks3d', name:'3D algebra blocks', tiles:Object.keys(AB).map(t => ['ab-' + t, AB[t].t]) },
   { id:'mats', name:'Algebra mats', tiles:Object.keys(MATS).map(m => [m, MATS[m].name]) },
   { id:'patternblocks', name:'Pattern Blocks', tiles:Object.keys(SH).map(s => ['sh-'+s, SH[s].n]) },
   { id:'tangrams', name:'Tangrams', tiles:[['tgset','Tangram (7 pieces)']] },   // the whole set only; each piece moves on its own once placed
+  { id:'geostrips', name:'Geo strips', wall:10*GS_U + 2*GS_P, tiles:[2,3,4,5,6,7,8,9,10].map(n => ['gs' + n, 'Strip ' + n]) },
+  { id:'pentominoes', name:'Pentominoes', tiles:Object.keys(PM).map(s => ['pm-' + s, s]) },
   { id:'colortiles', name:'Color tiles', tiles:Object.keys(CT_COL).map(c => ['ct-' + c, CT_NAME[c]]) },
   { id:'lines', name:'Number lines', line:true, tiles:[['nl','Intervals'],['nlo','Open number line'],['hopp','+ hop'],['hopm','− hop'],['nlpt','Point']] }
 ];
@@ -1293,8 +1382,19 @@ function buildTray(){
   let html = '';
   for (const g of GROUPS){
     if (want.length && !want.includes(g.id)) continue;
-    html += `<details open><summary>${g.name}</summary><div class="tiles${g.wall?' wall':''}${g.line || g.xd ? ' lines' : ''}">`;
+    html += `<details open><summary>${g.name}</summary><div class="tiles${g.wall?' wall':''}${g.line || g.xd ? ' lines' : ''}${g.id === 'dotpatterns' ? ' kak' : ''}">`;
     let hopRow = '';
+    if (g.id === 'pentominoes'){
+      // each pentomino its own color, or all one color (with a choice of color)
+      const sw = (v, t) => `<button type="button" class="ctsize${S.pmOne === v ? ' on' : ''}" data-pmone="${v ? 1 : 0}" aria-pressed="${S.pmOne === v}">${t}</button>`;
+      html += `<div class="ctsizes" role="group" aria-label="Pentomino colors">${sw(false, 'Separate colors')}${sw(true, 'One color')}</div>`;
+      if (S.pmOne) html += `<div class="pmcols">${PM_SWATCHES.map(c => `<button type="button" class="pmsw" data-pmcol="${c}" style="background:${c}" aria-label="Color ${c}" aria-pressed="${c.toLowerCase() === S.pmCol.toLowerCase()}"></button>`).join('')}</div>`;
+    }
+    if (g.id === 'geostrips'){
+      // new strips join at every hole, or only at their two ends
+      const sw = (v, t) => `<button type="button" class="ctsize${S.gsEnds === v ? ' on' : ''}" data-gse="${v ? 1 : 0}" aria-pressed="${S.gsEnds === v}">${t}</button>`;
+      html += `<div class="ctsizes" role="group" aria-label="Geo strip holes">${sw(false, 'Every hole')}${sw(true, 'Ends only')}</div>`;
+    }
     if (g.id === 'colortiles'){
       // one size at a time: 1 inch or 1 cm squares
       const sw = (u, t) => `<button type="button" class="ctsize${S.ctu === u ? ' on' : ''}" data-ctu="${u}" aria-pressed="${S.ctu === u}">${t}</button>`;
@@ -1352,6 +1452,14 @@ function buildTray(){
                     `<path d="M4 17l9-5.5v11zM176 17l-9-5.5v11z" fill="#1f2937"/></svg>`;
         html += `<button type="button" class="tile nlt" data-pid="${pid}"${S.labels ? ` title="${esc(label)}"` : ''} aria-label="Add ${esc(label)}">`+
                 pic + (S.labels ? `<span>${esc(label)}</span>` : '') + `</button>`;
+        continue;
+      }
+      if (pid.startsWith('pd:')){
+        // a dot of one color: drag it onto the board (or click it to drop one in the middle)
+        const c = pid.slice(3);
+        html += `<button type="button" class="tile dott" data-pid="${pid}" title="${esc(label)} dot" aria-label="Add a ${esc(label)} dot">`+
+                `<svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true"><circle cx="15" cy="15" r="12" fill="${c}" stroke="${mix(c,'#000000',.35)}" stroke-width="2"/></svg>` +
+                (S.labels ? `<span>${esc(label)}</span>` : '') + `</button>`;
         continue;
       }
       if (pid === 'tgset'){
@@ -1456,19 +1564,28 @@ function polysOverlap(A, B){
   }
   return true;
 }
-// do any of these tangram pieces (in their new places) overlap a tangram piece that is not among them?
+// the same rule covers pentominoes (each of their squares is checked); tangrams and pentominoes don't block each other
+const NO_OVERLAP = new Set(['tg', 'pm']);
+const shapePolys = it => it.k === 'tg' ? [tgVerts(it)] : pmPolys(it);
+// do any of these pieces (in their new places) overlap a piece of the same kind that is not among them?
 function tgClash(list){
-  const ids = new Set(list.map(i => i.id)), others = Object.values(S.items).filter(o => o.k === 'tg' && !ids.has(o.id)).map(tgVerts);
-  return list.some(i => i.k === 'tg' && others.some(o => polysOverlap(tgVerts(i), o)));
+  const ids = new Set(list.map(i => i.id));
+  return list.some(i => {
+    if (!NO_OVERLAP.has(i.k)) return false;
+    const mine = shapePolys(i);
+    return Object.values(S.items).some(o => o.k === i.k && !ids.has(o.id) && shapePolys(o).some(op => mine.some(mp => polysOverlap(mp, op))));
+  });
 }
-// a dropped tangram piece clicks corner to corner onto a piece it is close to
+// a dropped piece clicks corner to corner onto a piece of the same kind it is close to
 function tgCornerSnap(list){
-  const ids = new Set(list.map(i => i.id)), moved = list.filter(i => i.k === 'tg'); if (!moved.length) return null;
-  const others = Object.values(S.items).filter(o => o.k === 'tg' && !ids.has(o.id)).flatMap(tgVerts);
+  const ids = new Set(list.map(i => i.id)), moved = list.filter(i => NO_OVERLAP.has(i.k)); if (!moved.length) return null;
   let best = null;
-  for (const m of moved) for (const [x, y] of tgVerts(m)) for (const [ox, oy] of others){
-    const d = Math.hypot(ox - x, oy - y);
-    if (d < 14 && (!best || d < best.d)) best = { dx:ox - x, dy:oy - y, d };
+  for (const m of moved){
+    const others = Object.values(S.items).filter(o => o.k === m.k && !ids.has(o.id)).flatMap(o => shapePolys(o).flat());
+    for (const [x, y] of shapePolys(m).flat()) for (const [ox, oy] of others){
+      const d = Math.hypot(ox - x, oy - y);
+      if (d < 14 && (!best || d < best.d)) best = { dx:ox - x, dy:oy - y, d };
+    }
   }
   return best;
 }
@@ -1478,6 +1595,439 @@ function bbox(it){
   const { w, h } = size(it), cx = it.x + w/2, cy = it.y + h/2, a = (it.r || 0) * Math.PI / 180;
   const c = Math.abs(Math.cos(a)), s = Math.abs(Math.sin(a)), bw = w*c + h*s, bh = w*s + h*c;
   return { l:cx-bw/2, t:cy-bh/2, r:cx+bw/2, b:cy+bh/2 };
+}
+
+/* ---------- geo strips: joints, bending, snapping to the dots, shapes ---------- */
+const gsAll = () => Object.values(S.items).filter(i => i.k === 'gs');
+const gsCanJoin = (it, q) => !it.e || q === 0 || q === it.L;
+const gk = (id, q) => id + ':' + q;
+// the strip's two ends on the board
+function gsEnds(it){
+  const L = it.L*GS_U, a = (it.r || 0)*Math.PI/180, ux = Math.cos(a), uy = Math.sin(a), cx = it.x + GS_P + L/2, cy = it.y + GS_P;
+  return { ax:cx - ux*L/2, ay:cy - uy*L/2, bx:cx + ux*L/2, by:cy + uy*L/2 };
+}
+function gsHole(it, q){ const e = gsEnds(it), f = q/it.L; return { x:e.ax + (e.bx - e.ax)*f, y:e.ay + (e.by - e.ay)*f }; }
+function gsFromEnds(it, ax, ay, bx, by){
+  const L = it.L*GS_U, r3 = v => Math.round(v*1000)/1000;
+  return { ...it, x:r3((ax + bx)/2 - L/2 - GS_P), y:r3((ay + by)/2 - GS_P), r:r3(Math.atan2(by - ay, bx - ax)*180/Math.PI) };
+}
+// every joint once: {a:[id, hole], b:[id, hole]} (only between strips that are both on the board)
+function gsJoints(){
+  const out = [], seen = new Set();
+  for (const s of gsAll()) for (const [q, o, oq] of (s.j || [])){
+    const t = S.items[o]; if (!t || t.k !== 'gs' || o === s.id) continue;
+    const k1 = gk(s.id, q), k2 = gk(o, oq), key = k1 < k2 ? k1 + '|' + k2 : k2 + '|' + k1;
+    if (!seen.has(key)){ seen.add(key); out.push({ a:[s.id, q], b:[o, oq] }); }
+  }
+  return out;
+}
+// holes joined together form one node; groups: node → its holes (pinned holes count as nodes too)
+function gsNodes(){
+  const par = {}, find = a => { if (par[a] === undefined) par[a] = a; while (par[a] !== a){ par[a] = par[par[a]]; a = par[a]; } return a; };
+  const J = gsJoints();
+  J.forEach(j => { const a = find(gk(...j.a)), b = find(gk(...j.b)); if (a !== b) par[a] = b; });
+  const groups = new Map(), add = h => { const r = find(gk(...h)); if (!groups.has(r)) groups.set(r, []); const g = groups.get(r); if (!g.some(x => x[0] === h[0] && x[1] === h[1])) g.push(h); };
+  J.forEach(j => { add(j.a); add(j.b); });
+  for (const s of gsAll()) for (const q of (s.pn || [])) add([s.id, q]);
+  return { find, groups, J };
+}
+const gsGroup = (h, nodes) => nodes.groups.get(nodes.find(gk(...h))) || [h];
+const gsPinned = h => { const s = S.items[h[0]]; return !!(s && s.pn && s.pn.includes(h[1])); };
+// all the strips joined (directly or through others) to this one
+function gsComp(id){
+  const J = gsJoints(), seen = new Set([id]), q = [id];
+  while (q.length){ const c = q.shift(); for (const j of J){ const o = j.a[0] === c ? j.b[0] : j.b[0] === c ? j.a[0] : null; if (o && !seen.has(o)){ seen.add(o); q.push(o); } } }
+  return [...seen];
+}
+function gsLink(a, b){
+  const A = S.items[a[0]], B = S.items[b[0]];
+  if (!A || !B || a[0] === b[0]) return false;
+  const nodes = gsNodes();
+  if (nodes.find(gk(...a)) === nodes.find(gk(...b))) return false;
+  const sa = gsGroup(a, nodes).map(h => h[0]), sb = gsGroup(b, nodes).map(h => h[0]);
+  if (sa.some(id => sb.includes(id))) return false;   // a strip can't be joined to itself
+  S.items[A.id] = { ...A, j:[...(A.j || []), [a[1], B.id, b[1]]] };
+  S.items[B.id] = { ...B, j:[...(B.j || []), [b[1], A.id, a[1]]] };
+  return true;
+}
+// strips left behind keep no joints to strips that are gone
+function gsUnlink(){
+  const out = [];
+  for (const s of gsAll()){
+    if (!s.j) continue;
+    const j = s.j.filter(([, o]) => S.items[o] && S.items[o].k === 'gs');
+    if (j.length !== s.j.length){ const n = { ...s }; if (j.length) n.j = j; else delete n.j; out.push(n); }
+  }
+  if (out.length) put(out);
+}
+// copies keep the joints among themselves (with the new ids)
+function gsRemap(n, idMap){
+  if (n.k !== 'gs' || !n.j) return;
+  n.j = n.j.filter(([, o]) => idMap[o]).map(([q, o, oq]) => [q, idMap[o], oq]);
+  if (!n.j.length) delete n.j;
+}
+
+/* background dots the strips click onto: the inch grid (60) and the isometric dots (rows of 30) */
+const gsGridOn = () => S.bg === 'gridin' || S.bg === 'grid' || S.bg === 'iso';
+function gsGridPt(x, y){
+  if (S.bg === 'iso'){ const d = isoDot(x, y); return { x:d[0], y:d[1] }; }
+  return { x:Math.round(x/GS_U)*GS_U, y:Math.round(y/GS_U)*GS_U };
+}
+// the shift that puts the most holes on dots (ties: the smallest shift)
+function gsFit(pts){
+  let best = null;
+  for (const h of pts){
+    const g = gsGridPt(h.x, h.y), dx = g.x - h.x, dy = g.y - h.y; let n = 0;
+    for (const q of pts){ const m = gsGridPt(q.x + dx, q.y + dy); if (Math.hypot(m.x - q.x - dx, m.y - q.y - dy) < 0.75) n++; }
+    const d = Math.hypot(dx, dy);
+    if (!best || n > best.n || (n === best.n && d < best.d - 1e-6)) best = { n, d, dx, dy };
+  }
+  return best;
+}
+const gsPts = list => list.filter(i => i.k === 'gs').flatMap(i => [...Array(i.L + 1)].map((_, q) => gsHole(i, q)));
+function gsSnapList(list){
+  if (!gsGridOn() || !list.some(i => i.k === 'gs')) return list;
+  const f = gsFit(gsPts(list)); if (!f) return list;
+  return list.map(i => ({ ...i, x:i.x + f.dx, y:i.y + f.dy }));
+}
+const gsPxR = () => GS_SNAP * V.w / stageSize().sw;   // the snapping distance on screen, in board units
+
+/* bending: each strip is a rigid bar; joints keep holes together. A position-based solver moves the strips as little as it can.
+   m: id → {id, L, ax, ay, bx, by, w} (w = how easily it moves; 0 = held still) */
+function gsSt(ids){
+  const m = new Map();
+  for (const id of ids){ const it = S.items[id]; if (it && it.k === 'gs') m.set(id, { id, L:it.L, ...gsEnds(it), w:1 }); }
+  return m;
+}
+const gsSave = m => [...m.values()].map(s => [s.ax, s.ay, s.bx, s.by]);
+const gsLoad = (m, v) => [...m.values()].forEach((s, i) => { [s.ax, s.ay, s.bx, s.by] = v[i]; });
+function gsWrite(m){ const out = []; for (const s of m.values()){ const n = gsFromEnds(S.items[s.id], s.ax, s.ay, s.bx, s.by); S.items[s.id] = n; out.push(n); } return out; }
+const gsAt = (s, f) => ({ x:s.ax + (s.bx - s.ax)*f, y:s.ay + (s.by - s.ay)*f });
+function gsProj(terms, tx, ty){
+  let cx = -tx, cy = -ty, den = 0;
+  for (const [s, f, g] of terms){ const ca = g*(1 - f), cb = g*f; cx += ca*s.ax + cb*s.bx; cy += ca*s.ay + cb*s.by; den += (ca*ca + cb*cb)*s.w; }
+  if (den < 1e-9) return;
+  const lx = -cx/den, ly = -cy/den;
+  for (const [s, f, g] of terms){ const ca = g*(1 - f), cb = g*f; s.ax += ca*s.w*lx; s.ay += ca*s.w*ly; s.bx += cb*s.w*lx; s.by += cb*s.w*ly; }
+}
+function gsLenC(s){
+  if (s.w === 0) return;
+  const dx = s.bx - s.ax, dy = s.by - s.ay, d = Math.hypot(dx, dy) || 1e-6, k = (d - s.L*GS_U)/d/2;
+  s.ax += dx*k; s.ay += dy*k; s.bx -= dx*k; s.by -= dy*k;
+}
+function gsHops(m, start){
+  const J = gsJoints().filter(j => m.has(j.a[0]) && m.has(j.b[0])), d = { [start]:0 }, q = [start];
+  while (q.length){ const c = q.shift(); for (const j of J){ const o = j.a[0] === c ? j.b[0] : j.b[0] === c ? j.a[0] : null; if (o && d[o] === undefined){ d[o] = d[c] + 1; q.push(o); } } }
+  return d;
+}
+// drag: {id, f, x, y} pulls that point of a strip; pins: [{h:[id, hole], x, y}] hold holes still; anchor: a strip that doesn't move
+function gsSolve(m, drag, anchor, pins){
+  const saved = gsSave(m), hd = drag ? gsHops(m, drag.id) : {};
+  for (const s of m.values()) s.w = s.id === anchor ? 0 : 1/(1 + (hd[s.id] === undefined ? 3 : hd[s.id]));
+  const J = gsJoints().filter(j => m.has(j.a[0]) && m.has(j.b[0])).map(j => { const a = m.get(j.a[0]), b = m.get(j.b[0]); return [[a, j.a[1]/a.L, 1], [b, j.b[1]/b.L, -1]]; });
+  const P = pins.filter(p => m.has(p.h[0])).map(p => { const s = m.get(p.h[0]); return { t:[[s, p.h[1]/s.L, 1]], x:p.x, y:p.y }; });
+  const ds = drag && m.get(drag.id);
+  for (let it = 0; it < 140; it++){
+    m.forEach(gsLenC);
+    J.forEach(t => gsProj(t, 0, 0));
+    P.forEach(p => gsProj(p.t, p.x, p.y));
+    if (ds && it < 90) gsProj([[ds, drag.f, 1]], drag.x, drag.y);
+  }
+  m.forEach(gsLenC);
+  let err = 0;
+  for (const s of m.values()) err = Math.max(err, Math.abs(Math.hypot(s.bx - s.ax, s.by - s.ay) - s.L*GS_U));
+  for (const [[a, fa], [b, fb]] of J){ const p = gsAt(a, fa), q = gsAt(b, fb); err = Math.max(err, Math.hypot(p.x - q.x, p.y - q.y)); }
+  for (const p of P){ const [s, f] = p.t[0], q = gsAt(s, f); err = Math.max(err, Math.hypot(q.x - p.x, q.y - p.y)); }
+  if (err > 2){ gsLoad(m, saved); return false; }
+  return true;
+}
+// the strip farthest from the dragged one (not touching the dragged hole) is held still while bending
+function gsFar(m, id, q, nodes, pins){
+  if (m.size < 2 || pins.length) return null;
+  const near = new Set(gsGroup([id, q], nodes).map(h => h[0])); near.add(id);
+  const d = gsHops(m, id), s0 = m.get(id), mx = (s0.ax + s0.bx)/2, my = (s0.ay + s0.by)/2;
+  let best = null, bs = -1;
+  for (const s of m.values()){
+    if (near.has(s.id)) continue;
+    const sc = (d[s.id] || 0)*1e6 + Math.hypot((s.ax + s.bx)/2 - mx, (s.ay + s.by)/2 - my);
+    if (sc > bs){ bs = sc; best = s.id; }
+  }
+  return best;
+}
+// 15° steps (within 3°) measured from another strip at a joint on the dragged strip
+function gsAngleSnap(p, m, id, q, nodes){
+  const s = m.get(id), myRoot = nodes.find(gk(id, q));
+  for (const [r, g] of nodes.groups){
+    if (r === myRoot) continue;
+    const mine = g.find(h => h[0] === id), other = g.find(h => h[0] !== id && m.has(h[0]));
+    if (!mine || !other) continue;
+    const piv = gsAt(s, mine[1]/s.L), o = m.get(other[0]), end = other[1] < o.L/2 ? { x:o.bx, y:o.by } : { x:o.ax, y:o.ay };
+    const ref = Math.atan2(end.y - piv.y, end.x - piv.x), cur = Math.atan2(p.y - piv.y, p.x - piv.x);
+    let rel = ((cur - ref)*180/Math.PI % 360 + 360) % 360; const sn = Math.round(rel/15)*15;
+    if (Math.abs(rel - sn) > 3) return p;
+    const a = ref + sn*Math.PI/180, rr = Math.hypot(p.x - piv.x, p.y - piv.y);
+    return { x:piv.x + rr*Math.cos(a), y:piv.y + rr*Math.sin(a) };
+  }
+  return p;
+}
+// pinned holes (except the one being dragged) stay where they are while bending
+function gsHeld(comp, id, q){
+  const nodes = gsNodes(), mine = new Set(gsGroup([id, q], nodes).map(h => gk(...h))), out = [];
+  for (const sid of comp){ const s = S.items[sid]; for (const pq of (s.pn || [])){ if (mine.has(gk(sid, pq))) continue; const p = gsHole(s, pq); out.push({ h:[sid, pq], x:p.x, y:p.y }); } }
+  return out;
+}
+function gsBendTo(p, alt){
+  const d = D, nodes = gsNodes(), R = gsPxR();
+  const blocked = new Set(gsGroup([d.id, d.q], nodes).map(h => h[0])), myRoot = nodes.find(gk(d.id, d.q));
+  let tgt = p, bd = R; d.best = null; d.ring = null;
+  // a hole of another strip nearby: click onto it (joined when let go)
+  for (const o of gsAll()){
+    if (blocked.has(o.id)) continue;
+    for (let q = 0; q <= o.L; q++){
+      if (!gsCanJoin(o, q) || nodes.find(gk(o.id, q)) === myRoot) continue;
+      const h = gsHole(o, q), dd = Math.hypot(h.x - p.x, h.y - p.y);
+      if (dd < bd){ bd = dd; d.best = [o.id, q]; tgt = h; }
+    }
+  }
+  if (d.best) d.ring = tgt;
+  const m = gsSt(d.comp), f = d.q / S.items[d.id].L, cur = () => gsAt(m.get(d.id), f);
+  const tryMove = t => {
+    const anc = gsFar(m, d.id, d.q, nodes, d.pins);
+    if (anc !== null){
+      const sv = gsSave(m), before = cur();
+      if (gsSolve(m, { id:d.id, f, x:t.x, y:t.y }, anc, d.pins)){
+        if (Math.hypot(cur().x - before.x, cur().y - before.y) > 0.5 || Math.hypot(t.x - before.x, t.y - before.y) < 3) return true;
+        // it didn't move: rigid, or a pull straight along the strip? try a small sideways nudge
+        gsLoad(m, sv);
+        const vx = t.x - before.x, vy = t.y - before.y, l = Math.hypot(vx, vy);
+        const ok = gsSolve(m, { id:d.id, f, x:before.x - vy/l*10, y:before.y + vx/l*10 }, anc, d.pins) && Math.hypot(cur().x - before.x, cur().y - before.y) > 0.5;
+        gsLoad(m, sv);
+        if (ok) return true;
+      }
+      gsLoad(m, sv);
+    }
+    return gsSolve(m, { id:d.id, f, x:t.x, y:t.y }, null, d.pins);   // rigid: the whole shape follows
+  };
+  let done = false;
+  if (!d.best && !alt && gsGridOn()){
+    // a dot within reach: go exactly there if the strips allow it
+    const g = gsGridPt(tgt.x, tgt.y);
+    if (Math.hypot(g.x - tgt.x, g.y - tgt.y) < R){
+      const sv = gsSave(m);
+      if (tryMove(g) && Math.hypot(cur().x - g.x, cur().y - g.y) < 1) done = true; else gsLoad(m, sv);
+    }
+  }
+  if (!done){ if (!d.best && !alt) tgt = gsAngleSnap(tgt, m, d.id, d.q, nodes); tryMove(tgt); }
+  gsWrite(m); dirty(); sendLater(d.comp);
+}
+// after a drop: holes almost on a dot (within 3) are settled exactly onto it, if the strips allow it
+function gsSettle(ids){
+  if (!gsGridOn()) return;
+  const m = gsSt(ids), pins = [];
+  let off = false;
+  for (const s of m.values()) for (let q = 0; q <= s.L; q++){
+    const p = gsAt(s, q/s.L), g = gsGridPt(p.x, p.y), dd = Math.hypot(g.x - p.x, g.y - p.y);
+    if (dd < 3){ pins.push({ h:[s.id, q], x:g.x, y:g.y }); if (dd > 1e-3) off = true; }
+  }
+  if (off && gsSolve(m, null, null, pins)) gsWrite(m);
+}
+function gsStartBend(id, q, e){
+  const it = S.items[id]; if (!it) return;
+  const comp = gsComp(id);
+  S.sel = new Set(groupOf(it)); S.gsHole = null; dirty();
+  D = { mode:'gsbend', id, q, pre:begin(), sx:e.clientX, sy:e.clientY, moved:false, comp, locked:comp.some(c => S.items[c].lock) };
+}
+function gsEndBend(d){
+  if (!d.moved){ S.gsHole = [d.id, d.q]; bar._sig = ''; dirty(); return; }   // a click: Pin / Separate for this hole
+  if (d.locked){ toast('This shape is locked. Unlock it to bend it.'); return; }
+  pend.clear(); clearTimeout(pendT); pendT = 0;
+  const changed = new Set(d.comp);
+  if (d.best && S.items[d.best[0]]){
+    const a = gsHole(S.items[d.id], d.q), b = gsHole(S.items[d.best[0]], d.best[1]);
+    if (Math.hypot(a.x - b.x, a.y - b.y) < 2.5 && gsLink([d.id, d.q], d.best)) toast('Joined.');
+  }
+  const comp = gsComp(d.id); comp.forEach(id => changed.add(id));
+  gsSettle(comp);
+  put([...changed].map(id => S.items[id]).filter(Boolean)); commit(d.pre);
+  S.sel = new Set(groupOf(S.items[d.id])); dirty();
+}
+// moving a shape: a hole near another strip's hole clicks onto it; otherwise the shape clicks onto the dots
+function gsMoveSnap(dx, dy, alt){
+  D.gsJoin = null; D.ring = null;
+  const moved = D.ids.map(id => S.items[id]).filter(i => i && i.k === 'gs').map(i => ({ ...i, x:D.orig.get(i.id).x + dx, y:D.orig.get(i.id).y + dy }));
+  if (!moved.length) return null;
+  const ids = new Set(D.ids), R = gsPxR(), others = gsAll().filter(o => !ids.has(o.id));
+  let best = null;
+  for (const a of moved) for (let q = 0; q <= a.L; q++){
+    if (!gsCanJoin(a, q)) continue;
+    const h = gsHole(a, q);
+    for (const o of others) for (let r = 0; r <= o.L; r++){
+      if (!gsCanJoin(o, r)) continue;
+      const g = gsHole(o, r), dd = Math.hypot(g.x - h.x, g.y - h.y);
+      if (dd < R && (!best || dd < best.d)) best = { d:dd, dx:g.x - h.x, dy:g.y - h.y, a:[a.id, q], b:[o.id, r], at:g };
+    }
+  }
+  if (best){ D.gsJoin = best; D.ring = best.at; return best; }
+  if (alt || !gsGridOn()) return null;
+  return gsFit(gsPts(moved));
+}
+// after a move that clicked onto a hole: join it, and any other holes that now sit on each other
+function gsJoinAfterMove(ids, join){
+  const set = new Set(ids), touched = new Set();
+  if (join && gsLink(join.a, join.b)) touched.add(join.b[0]);
+  const mine = gsAll().filter(i => set.has(i.id)), others = gsAll().filter(i => !set.has(i.id));
+  for (const a of mine) for (let q = 0; q <= a.L; q++){
+    if (!gsCanJoin(a, q)) continue;
+    const h = gsHole(S.items[a.id], q);
+    for (const o of others) for (let r = 0; r <= o.L; r++){
+      if (!gsCanJoin(o, r)) continue;
+      const g = gsHole(S.items[o.id], r);
+      if (Math.hypot(g.x - h.x, g.y - h.y) < 1.5 && gsLink([a.id, q], [o.id, r])) touched.add(o.id);
+    }
+  }
+  return [...touched];
+}
+
+/* shapes: a closed loop of strips (each strip joined at exactly two nodes, each node joining two strips) */
+function gsSegX(p1, p2, p3, p4){
+  const d = (p2.x - p1.x)*(p4.y - p3.y) - (p2.y - p1.y)*(p4.x - p3.x); if (Math.abs(d) < 1e-9) return false;
+  const t = ((p3.x - p1.x)*(p4.y - p3.y) - (p3.y - p1.y)*(p4.x - p3.x))/d, u = ((p3.x - p1.x)*(p2.y - p1.y) - (p3.y - p1.y)*(p2.x - p1.x))/d;
+  return t > 0.001 && t < 0.999 && u > 0.001 && u < 0.999;
+}
+function gsPolygons(nodes){
+  const sn = {}, out = [];
+  for (const [r, g] of nodes.groups){
+    if (new Set(g.map(h => h[0])).size < 2) continue;
+    for (const h of g) (sn[h[0]] = sn[h[0]] || []).push({ r, q:h[1] });
+  }
+  const done = new Set();
+  for (const s0 of gsAll()){
+    if (done.has(s0.id)) continue;
+    const ids = gsComp(s0.id); ids.forEach(id => done.add(id));
+    if (ids.length < 3 || !ids.every(id => sn[id] && sn[id].length === 2)) continue;
+    const deg = {}; ids.forEach(id => sn[id].forEach(n => deg[n.r] = (deg[n.r] || 0) + 1));
+    if (!Object.values(deg).every(v => v === 2)) continue;
+    const verts = [], sides = [], used = new Set();
+    let cur = ids[0], from = sn[cur][0].r; const start = from;
+    for (let i = 0; i < ids.length; i++){
+      used.add(cur);
+      const s = S.items[cur], a = sn[cur].find(n => n.r === from), b = sn[cur].find(n => n.r !== from);
+      const p = gsHole(s, a.q); verts.push({ x:p.x, y:p.y, r:from });
+      sides.push({ id:cur, len:Math.abs(b.q - a.q) });
+      from = b.r; cur = ids.find(id => !used.has(id) && sn[id].some(n => n.r === from));
+      if (cur === undefined) break;
+    }
+    if (verts.length !== ids.length || from !== start) continue;
+    out.push({ ids, ...gsAnalyze(verts, sides) });
+  }
+  return out;
+}
+function gsAnalyze(V_, sides){
+  const n = V_.length; let A = 0;
+  for (let i = 0; i < n; i++){ const a = V_[i], b = V_[(i + 1) % n]; A += a.x*b.y - b.x*a.y; } A /= 2;
+  let crossed = false;
+  for (let i = 0; i < n; i++) for (let j = i + 2; j < n; j++){ if (i === 0 && j === n - 1) continue; if (gsSegX(V_[i], V_[(i + 1) % n], V_[j], V_[(j + 1) % n])) crossed = true; }
+  const angs = V_.map((v, i) => {
+    const p = V_[(i - 1 + n) % n], q = V_[(i + 1) % n], e1 = { x:p.x - v.x, y:p.y - v.y }, e2 = { x:q.x - v.x, y:q.y - v.y };
+    const l1 = Math.hypot(e1.x, e1.y), l2 = Math.hypot(e2.x, e2.y);
+    const raw = Math.acos(Math.max(-1, Math.min(1, (e1.x*e2.x + e1.y*e2.y)/(l1*l2))))*180/Math.PI;
+    const turn = (v.x - p.x)*(q.y - v.y) - (v.y - p.y)*(q.x - v.x);
+    return { v, e1, e2, deg:Math.abs(turn) < 1e-6*l1*l2 ? 180 : (turn*A > 0 ? raw : 360 - raw) };
+  });
+  const lens = sides.map(s => s.len), per = lens.reduce((a, b) => a + b, 0), area = Math.abs(A)/(GS_U*GS_U);
+  const c = { x:V_.reduce((a, v) => a + v.x, 0)/n, y:V_.reduce((a, v) => a + v.y, 0)/n };
+  const right = a => Math.abs(a - 90) < 0.5, allEq = lens.every(l => l === lens[0]), angEq = angs.every(a => Math.abs(a.deg - angs[0].deg) < 0.5);
+  const concave = !crossed && angs.some(a => a.deg > 180.5);
+  let name;
+  if (crossed) name = `crossed ${GS_NM[n] || n + '-gon'} (sides cross)`;
+  else if (n === 3){
+    const st = new Set(lens).size, mx = Math.max(...angs.map(a => a.deg));
+    name = st === 1 ? 'equilateral triangle' : `${right(mx) ? 'right' : mx > 90.5 ? 'obtuse' : 'acute'} ${st === 2 ? 'isosceles' : 'scalene'} triangle`;
+  } else if (n === 4){
+    const dir = i => { const a = V_[i], b = V_[(i + 1) % 4], l = Math.hypot(b.x - a.x, b.y - a.y); return { x:(b.x - a.x)/l, y:(b.y - a.y)/l }; };
+    const par = (i, j) => { const a = dir(i), b = dir(j); return Math.abs(a.x*b.y - a.y*b.x) < 0.009; };
+    const p02 = par(0, 2), p13 = par(1, 3), allR = angs.every(a => right(a.deg));
+    name = concave ? 'concave quadrilateral' : allEq && allR ? 'square' : allR ? 'rectangle' : allEq ? 'rhombus'
+         : p02 && p13 ? 'parallelogram' : p02 || p13 ? 'trapezoid'
+         : (lens[0] === lens[1] && lens[2] === lens[3]) || (lens[1] === lens[2] && lens[3] === lens[0]) ? 'kite' : 'quadrilateral';
+  } else {
+    const base = GS_NM[n] || n + '-gon';
+    name = allEq && angEq ? 'regular ' + base : concave ? 'concave ' + base : base;
+  }
+  return { verts:V_, sides, angs, lens, per, area, c, name, crossed, sum:angs.reduce((a, b) => a + b.deg, 0) };
+}
+const gsCap = s => s.charAt(0).toUpperCase() + s.slice(1);
+const gsNorm = a => { a %= 2*Math.PI; return a < 0 ? a + 2*Math.PI : a; };
+function gsArc(v, a1, deg){
+  const a2 = a1 + deg*Math.PI/180, u1 = { x:Math.cos(a1), y:Math.sin(a1) }, u2 = { x:Math.cos(a2), y:Math.sin(a2) };
+  const am = a1 + deg*Math.PI/360, lr = deg < 30 ? 84 : deg < 60 ? 70 : 56;
+  const lab = `<text class="gsang" x="${v.x + Math.cos(am)*lr}" y="${v.y + Math.sin(am)*lr}" text-anchor="middle" dominant-baseline="central">${Math.round(deg)}°</text>`;
+  if (Math.abs(deg - 90) < 0.5){ const q = 20;
+    return `<path class="gsarc" d="M${v.x + u1.x*q} ${v.y + u1.y*q}L${v.x + (u1.x + u2.x)*q} ${v.y + (u1.y + u2.y)*q}L${v.x + u2.x*q} ${v.y + u2.y*q}"/>` + lab; }
+  const r = 32;
+  return `<path class="gsarc" d="M${v.x + u1.x*r} ${v.y + u1.y*r}A${r} ${r} 0 ${deg > 180 ? 1 : 0} 1 ${v.x + u2.x*r} ${v.y + u2.y*r}"/>` + lab;
+}
+// joints, pins, and (with Values / Names) angle measures, side lengths and shape names, drawn over the strips
+function gsOverlay(){
+  if (!gsAll().length) return '';
+  const nodes = gsNodes(), polys = S.values || S.labels ? gsPolygons(nodes) : [];
+  let h = '', t = '';
+  for (const [, g] of nodes.groups){
+    const nS = new Set(g.map(x => x[0])).size, pin = g.some(gsPinned);
+    if (nS < 2 && !pin) continue;
+    const p = gsHole(S.items[g[0][0]], g[0][1]), key = gk(...g[0]);
+    h += pin ? `<circle data-gsj="${key}" cx="${p.x}" cy="${p.y}" r="12" fill="#dc2626" stroke="#ffffff" stroke-width="3" style="cursor:pointer"/><circle cx="${p.x}" cy="${p.y}" r="3.5" fill="#ffffff" pointer-events="none"/>`
+             : `<circle data-gsj="${key}" cx="${p.x}" cy="${p.y}" r="10" fill="#2b2f36" style="cursor:pointer"/><circle cx="${p.x}" cy="${p.y}" r="3.2" fill="#ffffff" pointer-events="none"/>`;
+  }
+  if (S.gsHole && S.items[S.gsHole[0]] && S.sel.has(S.gsHole[0])){ const p = gsHole(S.items[S.gsHole[0]], S.gsHole[1]); t += `<circle cx="${p.x}" cy="${p.y}" r="19" fill="none" stroke="#2563eb" stroke-width="3"/>`; }
+  if (D && D.ring) t += `<circle cx="${D.ring.x}" cy="${D.ring.y}" r="20" fill="none" stroke="#2563eb" stroke-width="3" stroke-dasharray="6 4"/>`;
+  if (S.values){
+    // angles: inside each shape; elsewhere, between strips meeting at a joint (crossing strips show all four)
+    const inPoly = new Set();
+    for (const P of polys){ if (P.crossed) continue;
+      for (const a of P.angs){ inPoly.add(a.v.r);
+        const a1 = Math.atan2(a.e1.y, a.e1.x), a2 = Math.atan2(a.e2.y, a.e2.x), dd = gsNorm(a1 + a.deg*Math.PI/180 - a2);
+        t += gsArc(a.v, dd < 0.02 || dd > 2*Math.PI - 0.02 ? a1 : a2, a.deg);
+      } }
+    for (const [r, g] of nodes.groups){
+      if (inPoly.has(r) || new Set(g.map(x => x[0])).size < 2) continue;
+      const P = gsHole(S.items[g[0][0]], g[0][1]), rays = [];
+      for (const [id, q] of g){ const e = gsEnds(S.items[id]), L = S.items[id].L;
+        if (q > 0) rays.push({ a:gsNorm(Math.atan2(e.ay - P.y, e.ax - P.x)), id });
+        if (q < L) rays.push({ a:gsNorm(Math.atan2(e.by - P.y, e.bx - P.x)), id }); }
+      rays.sort((x, y) => x.a - y.a);
+      for (let i = 0; i < rays.length; i++){
+        const r1 = rays[i], r2 = rays[(i + 1) % rays.length]; if (r1.id === r2.id) continue;
+        const deg = gsNorm(r2.a - r1.a)*180/Math.PI; if (deg >= 179.5 || deg < 0.5) continue;
+        t += gsArc(P, r1.a, deg);
+      }
+    }
+  }
+  if (S.labels){
+    // side lengths (in units) and shape names
+    const done = new Set();
+    for (const P of polys){
+      P.sides.forEach((sd, i) => { done.add(sd.id);
+        const a = P.verts[i], b = P.verts[(i + 1) % P.verts.length], mx = (a.x + b.x)/2, my = (a.y + b.y)/2;
+        let nx = -(b.y - a.y), ny = b.x - a.x; const l = Math.hypot(nx, ny) || 1; nx /= l; ny /= l;
+        if (nx*(mx - P.c.x) + ny*(my - P.c.y) < 0){ nx = -nx; ny = -ny; }
+        t += `<text class="gslen" x="${mx + nx*32}" y="${my + ny*32}" text-anchor="middle" dominant-baseline="central">${sd.len}</text>`;
+      });
+      t += `<text class="gsname" x="${P.c.x}" y="${P.c.y}" text-anchor="middle" dominant-baseline="central">${gsCap(P.name)}</text>`;
+    }
+    for (const s of gsAll()){ if (done.has(s.id)) continue;
+      const e = gsEnds(s), L = s.L*GS_U, nx = -(e.by - e.ay)/L, ny = (e.bx - e.ax)/L;
+      t += `<text class="gslen" x="${(e.ax + e.bx)/2 + nx*32}" y="${(e.ay + e.by)/2 + ny*32}" text-anchor="middle" dominant-baseline="central">${s.L}</text>`;
+    }
+  }
+  return h + (t ? `<g pointer-events="none">${t}</g>` : '');
+}
+function gsValue(list){
+  const gss = list.filter(i => i.k === 'gs'); if (!gss.length) return '';
+  const ids = new Set(gss.map(i => i.id)), polys = gsPolygons(gsNodes()).filter(P => P.ids.every(id => ids.has(id)));
+  if (!polys.length) return `Geo strips: ${gss.map(i => i.L).join(', ')} units long`;
+  return polys.map(P => `${gsCap(P.name)}: sides ${P.lens.join(', ')}` + (P.crossed ? '' :
+    ` · angles ${P.angs.map(a => Math.round(a.deg) + '°').join(', ')} (sum ${Math.round(P.sum)}°) · perimeter ${P.per} · area ${Math.round(P.area*10)/10} square units`)).join('   ·   ');
 }
 
 /* ---------- rendering ---------- */
@@ -1492,7 +2042,7 @@ function render(){
     let e = els.get(it.id);
     if (!e){ e = document.createElementNS('http://www.w3.org/2000/svg','g'); e.dataset.id = it.id; els.set(it.id, e); }
     const { x, y, z, r, lock, ...shape } = it;
-    const key = JSON.stringify(shape) + S.labels;
+    const key = JSON.stringify(shape) + S.labels + (it.k === 'pm' ? pmColor(it) : '');   // pentominoes redraw when the color choice changes
     if (e._k !== key){ e.innerHTML = inner(it); e._k = key; }
     const { w, h } = size(it);
     e.setAttribute('transform', `translate(${x} ${y})` + (r ? ` rotate(${r} ${w/2} ${h/2})` : ''));
@@ -1515,6 +2065,7 @@ function render(){
   const gEl = $('#grpLines'); if (gEl._v !== gl){ gEl.innerHTML = gl; gEl._v = gl; }
   // the product rectangle's guides only show with Values or Names on, so students build it themselves first
   const pg = S.values || S.labels ? prodGuides() + volGuides() : '', pEl = $('#guides'); if (pEl._v !== pg){ pEl.innerHTML = pg; pEl._v = pg; }
+  const gl2 = gsOverlay(), gsEl = $('#gsLayer'); if (gsEl._v !== gl2){ gsEl.innerHTML = gl2; gsEl._v = gl2; }   // geo strip joints, angles, lengths
   updateBar();
 }
 
@@ -1797,6 +2348,15 @@ function valueText(list){
   }
   const tgs = list.filter(i => i.k === 'tg');
   if (tgs.length) parts.push(`Tangram pieces: ${tgs.length} of 7`);
+  const gsv = gsValue(list); if (gsv) parts.push(gsv);
+  const pds = list.filter(i => i.k === 'pd');
+  if (pds.length){
+    // dots by color, then the total (for growing patterns: select a stage to count it)
+    const by = DOT_COLS.map(([c, n]) => [n, pds.filter(i => i.c === c).length]).filter(([, k]) => k);
+    parts.push(`Dots: ${by.length > 1 ? by.map(([n, k]) => `${k} ${n.toLowerCase()}`).join(' + ') + ' = ' : ''}${pds.length}`);
+  }
+  const pms = list.filter(i => i.k === 'pm');
+  if (pms.length) parts.push(`Pentominoes: ${pms.map(i => i.s).join(', ')} · ${pms.length*5} squares`);
   const bt = list.filter(i => BT[i.k]);
   if (bt.length){
     const c = { b1000:0, b100:0, b10:0, b1:0 };
@@ -1865,7 +2425,9 @@ const IC = {
   pg1:'<circle cx="10" cy="10" r="5.5" fill="#4F95DB" stroke="none"/><circle cx="10" cy="10" r="5.5"/>',
   grp2:'<rect x="2.5" y="2.5" width="15" height="15" rx="2.5" stroke-dasharray="2.6 2.4"/><rect x="5.5" y="5.5" width="5" height="5" rx="1"/><rect x="9.5" y="9.5" width="5" height="5" rx="1"/>',
   abturn:'<path d="M4 7l4-3h9l-4 3z"/><path d="M4 7h9v9H4z"/><path d="M13 7l4-3v9l-4 3"/>',
-  ungrp:'<rect x="2.5" y="2.5" width="6.5" height="6.5" rx="1.3"/><rect x="11" y="11" width="6.5" height="6.5" rx="1.3"/><path d="M12 3.5l4.5 4.5M16.5 3.5L12 8"/>'
+  ungrp:'<rect x="2.5" y="2.5" width="6.5" height="6.5" rx="1.3"/><rect x="11" y="11" width="6.5" height="6.5" rx="1.3"/><path d="M12 3.5l4.5 4.5M16.5 3.5L12 8"/>',
+  gspin:'<circle cx="10" cy="7" r="4"/><path d="M10 11v6.5"/>',
+  gssep:'<circle cx="5.5" cy="10" r="2.5"/><circle cx="14.5" cy="10" r="2.5"/><path d="M8 10h1M11 10h1"/>'
 };
 const ico = n => `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${IC[n]}</svg>`;
 const abtn = (a, icon, label, extra='') => `<button type="button" class="act ${extra}" data-act="${a}" title="${label}" aria-label="${label}">${ico(icon)}<span class="lbl">${label}</span></button>`;
@@ -1873,8 +2435,11 @@ const abtn = (a, icon, label, extra='') => `<button type="button" class="act ${e
 function selList(){ return [...S.sel].map(id => S.items[id]).filter(Boolean); }
 // every piece in the same group as `it` (just `it` if it is not grouped)
 function groupOf(it){
-  if (!it || !it.grp) return it ? [it.id] : [];
-  return Object.values(S.items).filter(o => o.grp === it.grp).map(o => o.id);
+  if (!it) return [];
+  let ids = it.grp ? Object.values(S.items).filter(o => o.grp === it.grp).map(o => o.id) : [it.id];
+  // joined geo strips are one shape: they are picked up, turned, copied and deleted together
+  if (ids.some(id => S.items[id] && S.items[id].k === 'gs')) ids = [...new Set(ids.flatMap(id => S.items[id].k === 'gs' ? gsComp(id) : [id]))];
+  return ids;
 }
 function hasZeroPair(list){
   for (const k of ['ctr','a1','ax','ax2']){
@@ -1888,11 +2453,18 @@ function updateBar(){
   const list = selList();
   if (!list.length){ bar.hidden = true; bar._sig = ''; return; }
   const v = S.values ? valueText(list) : '';
-  const sig = list.map(i => i.id + i.k + (i.neg?1:0) + (i.lock?1:0) + (i.grp || '')).join() + '|' + v;
+  // a geo strip hole or joint that was clicked: pin it, or separate the strips joined there
+  const gh = S.gsHole && S.items[S.gsHole[0]] && S.sel.has(S.gsHole[0]) ? S.gsHole : null;
+  const ghG = gh ? gsGroup(gh, gsNodes()) : null, ghPin = ghG ? ghG.some(gsPinned) : false, ghJoin = ghG ? new Set(ghG.map(h => h[0])).size > 1 : false;
+  const sig = list.map(i => i.id + i.k + (i.neg?1:0) + (i.lock?1:0) + (i.grp || '')).join() + '|' + v + '|' + (gh ? gh.join(':') + ghPin + ghJoin : '');
   if (sig === bar._sig) return;
   bar._sig = sig;
   const b = list.some(i => !NO_TURN.has(i.k)) ? [abtn('rotL','rotL','Rotate left'), abtn('rotR','rotR','Rotate right')] : [];
-  if (list.some(i => i.k === 'ctr' || AL[i.k] || i.k === 'ab' || i.k === 'tg')) b.push(abtn('flip','flip','Flip'));
+  if (gh){
+    if (ghJoin) b.push(abtn('gssep','gssep','Separate'));
+    b.push(abtn('gspin','gspin', ghPin ? 'Unpin' : 'Pin'));
+  }
+  if (list.some(i => i.k === 'ctr' || AL[i.k] || i.k === 'ab' || i.k === 'tg' || i.k === 'pm')) b.push(abtn('flip','flip','Flip'));
   if (list.some(i => i.k === 'tg' && !i.lock)) b.push(abtn('tgcol','tgcol','Color'));
   if (list.some(i => i.k === 'ab' && !i.lock)) b.push(abtn('abturn','abturn','Turn'));
   if (list.some(i => i.k === 'amx' && !i.lock)) b.push(abtn('matturn','rotR','Turn mat'));
@@ -1926,7 +2498,8 @@ function doAction(a){
     const dir = a === 'rotL' ? -1 : 1, onlyShapes = turn.every(i => i.k === 'sh'), iso = isoOn() && turn.some(i => i.k === 'sh');
     // tangram pieces turn 45° at a time (their sides meet at 45° and 90°)
     const onlyTg = turn.every(i => i.k === 'tg');
-    const step = (onlyTg ? 45 : onlyShapes ? (iso ? 60 : 30) : 90) * dir, norm = r => ((r % 360) + 360) % 360;
+    const onlyGs = turn.length && turn.every(i => i.k === 'gs');   // geo strip shapes turn 15° at a time
+    const step = (onlyGs ? 15 : onlyTg ? 45 : onlyShapes ? (iso ? 60 : 30) : 90) * dir, norm = r => ((r % 360) + 360) % 360;
     const turnTo = i => iso && i.k === 'sh'
       ? norm(dir > 0 ? Math.floor((i.r || 0)/60)*60 + 60 : Math.ceil((i.r || 0)/60)*60 - 60)   // next 60° mark
       : norm((i.r || 0) + step);
@@ -1940,15 +2513,16 @@ function doAction(a){
         const { w, h } = size(i), dx = i.x + w/2 - gx, dy = i.y + h/2 - gy;
         return { ...i, x:gx + dx*cs - dy*sn - w/2, y:gy + dx*sn + dy*cs - h/2, r:turnTo(i) };
       });
-      if (!iso) out = out.map(i => ({ ...i, x:Math.round(i.x*2)/2, y:Math.round(i.y*2)/2 }));
+      if (!iso && !onlyGs) out = out.map(i => ({ ...i, x:Math.round(i.x*2)/2, y:Math.round(i.y*2)/2 }));
     } else out = turn.map(i => ({ ...i, r:turnTo(i) }));
     out = isoSnap(out);   // back onto the dots (does nothing on other backgrounds)
+    if (onlyGs) out = gsSnapList(out);   // geo strips too (inch grid or isometric dots)
     if (tgClash(out)){ toast('That turn would make tangram pieces overlap. Move the piece to an open space first.'); return; }
     act(() => put(out));
   } else if (a === 'flip'){
-    const out = free.filter(i => i.k === 'ctr' || AL[i.k] || i.k === 'ab' || i.k === 'tg').map(i => {
+    const out = free.filter(i => i.k === 'ctr' || AL[i.k] || i.k === 'ab' || i.k === 'tg' || i.k === 'pm').map(i => {
       const n = { ...i };
-      if (i.k === 'tg'){ if (n.fl) delete n.fl; else n.fl = true; return n; }   // tangram pieces turn over (a mirror image)
+      if (i.k === 'tg' || i.k === 'pm'){ if (n.fl) delete n.fl; else n.fl = true; return n; }   // tangram pieces and pentominoes turn over (a mirror image)
       if (n.neg) delete n.neg; else n.neg = true; return n;
     });
     if (tgClash(out)){ toast('Flipping would make tangram pieces overlap. Move the piece to an open space first.'); return; }
@@ -1990,10 +2564,12 @@ function doAction(a){
     else { let z = zTop(); act(() => put(list.map(i => ({ ...i, z:z++ })))); }
   } else if (a === 'dup'){
     let z = zTop();
-    const newGrp = {};   // copies of a group become a new group of their own
-    const copies = withSeeds(list).map(i => { const n = structuredClone(i);
-      if (n.grp) n.grp = newGrp[n.grp] || (newGrp[n.grp] = 'g' + rid()); n.id = newId(); n.x += 30; n.y += 30; n.z = MAT.has(n.k) ? zBottom() - 1 : z++; delete n.lock; return n; });
-    if (copies.some(c => c.k === 'tg')) tgClear(copies);   // copied tangram pieces land clear of the others
+    const newGrp = {}, src = withSeeds(list), idMap = {};   // copies of a group become a new group of their own
+    src.forEach(i => idMap[i.id] = newId());
+    const gsOnly = src.every(i => i.k === 'gs'), off = gsOnly && gsGridOn() ? GS_U : 30;   // copied strips land one square over, still on the dots
+    const copies = src.map(i => { const n = structuredClone(i);
+      if (n.grp) n.grp = newGrp[n.grp] || (newGrp[n.grp] = 'g' + rid()); n.id = idMap[i.id]; n.x += off; n.y += off; gsRemap(n, idMap); n.z = MAT.has(n.k) ? zBottom() - 1 : z++; delete n.lock; return n; });
+    if (copies.some(c => NO_OVERLAP.has(c.k))) tgClear(copies);   // copied tangram pieces and pentominoes land clear of the others
     act(() => put(copies));
     S.sel = new Set(copies.map(c => c.id)); dirty();
   } else if (a === 'pg2' || a === 'pg1'){
@@ -2018,7 +2594,26 @@ function doAction(a){
     toast(lockIt ? 'Locked. Locked pieces stay put and are kept when the board is cleared.' : 'Unlocked.');
   } else if (a === 'del'){
     if (free.length < list.length) toast('Locked pieces were kept. Unlock them first to delete.');
-    act(() => { drop(withSeeds(free).filter(i => !i.lock).map(i => i.id)); relayout(); prodLayout(); volLayout(); });
+    act(() => { drop(withSeeds(free).filter(i => !i.lock).map(i => i.id)); gsUnlink(); relayout(); prodLayout(); volLayout(); });
+  } else if (a === 'gssep' || a === 'gspin'){
+    const gh = S.gsHole; if (!gh || !S.items[gh[0]]) return;
+    const g = gsGroup(gh, gsNodes()), inG = (id, q) => g.some(h => h[0] === id && h[1] === q);
+    if (g.some(h => S.items[h[0]].lock)){ toast('This shape is locked. Unlock it first.'); return; }
+    act(() => {
+      if (a === 'gssep'){
+        // every joint at this spot comes apart; the strips stay where they are
+        put([...new Set(g.map(h => h[0]))].map(id => { const s = S.items[id], n = { ...s };
+          const j = (s.j || []).filter(([q, o, oq]) => !(inG(id, q) && inG(o, oq))); if (j.length) n.j = j; else delete n.j; return n; }));
+        toast('Separated. Drag a strip away, or drop it on another hole to join again.');
+      } else {
+        const pinned = g.some(gsPinned);
+        if (pinned) put([...new Set(g.map(h => h[0]))].map(id => { const s = S.items[id], n = { ...s };
+          const pn = (s.pn || []).filter(q => !inG(id, q)); if (pn.length) n.pn = pn; else delete n.pn; return n; }));
+        else { const s = S.items[gh[0]]; put([{ ...s, pn:[...(s.pn || []), gh[1]] }]); }
+        toast(pinned ? 'Unpinned.' : 'Pinned: this point stays still while you bend the shape.');
+      }
+    });
+    bar._sig = ''; dirty();
   }
 }
 
@@ -2259,6 +2854,28 @@ $('#inks').addEventListener('click', e => {
   S.ink = b.dataset.ink;
   document.querySelectorAll('[data-ink]').forEach(x => x.setAttribute('aria-pressed', x === b));
 });
+/* Dots: colored dots (pieces from the side menu) for growing dot patterns.
+   The spot a dot settles on when dropped or moved: the nearest background dot, square centre or grid crossing. */
+// dots are the size of counters (44), so the spots are spaced at least 50 apart and still sit on the background's pattern
+const DOT_D = 44;
+function dotSpot(x, y){
+  const bg = S.bg;
+  const lat = (step, off) => [Math.round((x - off)/step)*step + off, Math.round((y - off)/step)*step + off];
+  if (bg === 'iso'){
+    // every other isometric dot (60 apart, still a triangle pattern)
+    let best = null; const j0 = Math.round(y/(2*ISO_H));
+    for (let j = j0 - 1; j <= j0 + 1; j++){
+      const off = ((j % 2) + 2) % 2 ? 30 : 0, i = Math.round((x - off)/60), dx = i*60 + off, dy = j*2*ISO_H, d = Math.hypot(x - dx, y - dy);
+      if (!best || d < best[2]) best = [dx, dy, d];
+    }
+    return [best[0], best[1]];
+  }
+  if (bg === 'gridin') return lat(60, 30);                 // the middle of each inch square
+  if (bg === 'gridcm') return lat(120/2.54, 60/2.54);      // every 2 cm (a dot covers about 2 cm)
+  if (bg === 'coord' || bg === 'coord1') return lat(50, 0); // grid crossings
+  if (bg === 'dots') return lat(80, 20);                   // every other background dot
+  return lat(50, 25);                                      // blank board
+}
 function setTool(t){
   S.tool = t;
   document.querySelectorAll('[data-tool]').forEach(b => b.classList.toggle('on', b.dataset.tool === t));
@@ -2295,7 +2912,7 @@ let D = null, lastTap = { t:0, id:null }, cascade = 0;
 
 function magnet(dx, dy){
   const T = 10, its = D.ids.map(id => S.items[id]).filter(Boolean);
-  if (!its.length || its.some(i => i.k === 'sh' || i.k === 'ink' || i.k === 'txt' || SEED[i.k] || i.k === 'tap' || (i.r || 0) % 90)) return [dx, dy];
+  if (!its.length || its.some(i => i.k === 'sh' || i.k === 'ink' || i.k === 'txt' || SEED[i.k] || i.k === 'tap' || i.k === 'gs' || (i.r || 0) % 90)) return [dx, dy];
   const g = { l:1e9, t:1e9, r:-1e9, b:-1e9 };
   for (const i of its){
     const o = D.orig.get(i.id), b = bbox({ ...i, x:o.x + dx, y:o.y + dy });
@@ -2306,7 +2923,7 @@ function magnet(dx, dy){
   for (const id in S.items){
     if (mine.has(id)) continue;
     const o = S.items[id];
-    if (o.k === 'ink' || o.k === 'txt' || o.k === 'nl' || o.k === 'sh' || o.k === 'tap' || SEED[o.k] || (o.r || 0) % 90) continue;
+    if (o.k === 'ink' || o.k === 'txt' || o.k === 'nl' || o.k === 'sh' || o.k === 'tap' || o.k === 'gs' || SEED[o.k] || (o.r || 0) % 90) continue;
     const b = bbox(o);
     if (b.t < g.b + T && b.b > g.t - T)
       for (const d of [b.l-g.l, b.r-g.l, b.l-g.r, b.r-g.r]) if (Math.abs(d) <= T && (bx === null || Math.abs(d) < Math.abs(bx))) bx = d;
@@ -2441,6 +3058,12 @@ svg.addEventListener('pointerdown', e => {
     if (it && it.k === 'txt') textDialog(it); else textDialog(null, p);
     e.preventDefault(); return;
   }
+  // geo strips: pressing a joint (drawn over the strips) or a hole bends the shape there; a click picks that spot
+  const prevHole = S.gsHole; S.gsHole = null; if (prevHole) bar._sig = '';
+  const gj = S.tool === 'select' && e.target.closest('[data-gsj]');
+  if (gj){ e.preventDefault(); const i = gj.dataset.gsj.lastIndexOf(':'); gsStartBend(gj.dataset.gsj.slice(0, i), +gj.dataset.gsj.slice(i + 1), e); return; }
+  const gh = S.tool === 'select' && it && it.k === 'gs' && e.target.closest('[data-gsk]');
+  if (gh){ e.preventDefault(); gsStartBend(it.id, +gh.dataset.gsk, e); return; }
   const hopEl = e.target.closest('[data-hop]'), hopIdx = hopEl ? +hopEl.dataset.hop : null;
   if (S.tool === 'hop'){
     e.preventDefault();
@@ -2557,7 +3180,7 @@ function dbl(it){
 function eraseAt(e){
   const el = document.elementFromPoint(e.clientX, e.clientY), g = el && el.closest && el.closest('#items > g');
   const it = g && S.items[g.dataset.id];
-  if (it && it.k === 'ink' && !it.lock) drop([it.id]);
+  if (it && (it.k === 'ink' || it.k === 'pd') && !it.lock) drop([it.id]);   // pen marks and dots
   const hp = el && el.closest && el.closest('[data-hop]');   // the eraser also rubs out hops
   if (it && it.k === 'nl' && hp && !it.lock) dropHop(it, +hp.dataset.hop);
   const pe = el && el.closest && el.closest('[data-pt]');   // and points
@@ -2599,6 +3222,12 @@ window.addEventListener('pointermove', e => {
     // an empty or typed label stays as it is; a label that was the point's value follows the point
     const auto = q.t !== '' && q.t === ptLabel(line, q.a), pt = line.pt.slice(); pt[D.idx] = { a, t:auto ? ptLabel(line, a) : q.t };
     S.items[D.id] = { ...line, pt }; D.moved = true; dirty();
+    return;
+  }
+  if (D.mode === 'gsbend'){
+    if (!D.moved && Math.hypot(e.clientX - D.sx, e.clientY - D.sy) < 4) return;
+    if (!D.moved){ D.moved = true; D.pins = gsHeld(D.comp, D.id, D.q); }
+    if (!D.locked) gsBendTo(toB(e), e.altKey);
     return;
   }
   if (D.mode === 'amsize'){
@@ -2683,6 +3312,8 @@ window.addEventListener('pointermove', e => {
       for (const id of D.ids){ const it = S.items[id]; if (it && !MAT.has(it.k)) it.z = z++; }
     }
     [dx, dy] = magnet(dx, dy);
+    // geo strips click onto another strip's hole, or onto the dots / inch grid
+    const gsn = gsMoveSnap(dx, dy, e.altKey); if (gsn){ dx += gsn.dx; dy += gsn.dy; }
     if (isoOn()){
       // pattern blocks click onto the isometric dots as they move
       const sh = isoShift(D.ids.map(id => S.items[id]).filter(i => i && i.k === 'sh')
@@ -2690,8 +3321,8 @@ window.addEventListener('pointermove', e => {
       if (sh){ dx += sh.dx; dy += sh.dy; }
     } else {
       // color tiles click onto an inch or centimeter grid as they move
-      const gs = gridShift(D.ids.map(id => S.items[id]).filter(i => i && i.k === 'ct')
-                                .map(i => ({ ...i, x:D.orig.get(i.id).x + dx, y:D.orig.get(i.id).y + dy })));
+      const moving = k => D.ids.map(id => S.items[id]).filter(i => i && k(i)).map(i => ({ ...i, x:D.orig.get(i.id).x + dx, y:D.orig.get(i.id).y + dy }));
+      const gs = gridShift(moving(i => i.k === 'ct' || i.k === 'pm')) || dotShift(moving(i => i.k === 'pd'));   // dots click onto their spots too
       if (gs){ dx += gs.dx; dy += gs.dy; }
     }
     for (const id of D.ids){ const it = S.items[id], o = D.orig.get(id); if (!it) continue; it.x = o.x + dx; it.y = o.y + dy; }
@@ -2759,6 +3390,7 @@ function endPointer(e){
     return;
   }
   if (d.mode === 'amsize'){ if (d.moved){ put([S.items[d.id]]); commit(d.pre); } return; }
+  if (d.mode === 'gsbend'){ gsEndBend(d); return; }
   if (d.mode === 'hopend'){
     if (d.moved){ put([S.items[d.id]]); commit(d.pre); }
     else openHopEditor(d.id, d.idx);   // a click on a hop opens its value box
@@ -2767,7 +3399,7 @@ function endPointer(e){
   if (d.mode === 'new'){
     // a click on a tray piece: place it near the middle of the board
     if (d.pid === 'tgset'){ const c = viewCenter(); placeTgSet(c.x, c.y); commit(d.pre); return; }
-    const o = (cascade++ % 8) * 26, c = viewCenter(), it = bgSnap([make(tpl(d.pid), c.x - 80 + o, c.y - 50 + o)])[0];
+    const o = (cascade++ % 8) * 26, c = viewCenter(), it = tgClear(bgSnap([make(tpl(d.pid), c.x - 80 + o, c.y - 50 + o)]))[0];   // pentominoes land clear of others
     put([it]); S.sel = new Set([it.id]); commit(d.pre);
     return;
   }
@@ -2811,13 +3443,13 @@ function endPointer(e){
   if (d.mode === 'move'){
     if (!d.moved){ if (d.pgBtn) pgCycle(d.pgBtn); return; }
     if (e && e.type === 'pointerup' && overTray(e)){
-      drop(d.ids); relayout(); prodLayout(); volLayout(); commit(d.pre); return;
+      drop(d.ids); gsUnlink(); relayout(); prodLayout(); volLayout(); commit(d.pre); return;
     }
-    const changed = [];
+    let changed = [];
     for (const id of d.ids){
       const it = S.items[id]; if (!it) continue;
-      // the board has no edges, so pieces can go anywhere (blocks snapped to dots keep their exact place)
-      if (!(isoOn() && d.ids.some(id => S.items[id] && S.items[id].k === 'sh')) && !(gridStep() && d.ids.some(id => S.items[id] && S.items[id].k === 'ct'))){
+      // the board has no edges, so pieces can go anywhere (blocks snapped to dots keep their exact place; geo strips keep exact places)
+      if (it.k !== 'gs' && !(isoOn() && d.ids.some(id => S.items[id] && S.items[id].k === 'sh')) && !(gridStep() && d.ids.some(id => S.items[id] && (S.items[id].k === 'ct' || S.items[id].k === 'pm'))) && !d.ids.some(id => S.items[id] && S.items[id].k === 'pd')){
         it.x = Math.round(it.x * 2) / 2;
         it.y = Math.round(it.y * 2) / 2;
       }
@@ -2825,12 +3457,18 @@ function endPointer(e){
       if (SEED[it.k] && d.ids.length === 1) snapToTap(it);
       changed.push(it);
     }
-    if (changed.some(i => i.k === 'tg')){
+    if (changed.some(i => i.k === 'gs')){
+      // geo strips dropped on another strip's hole join there (and at any other holes that now meet)
+      const touched = gsJoinAfterMove(d.ids, d.gsJoin);
+      changed = changed.map(i => S.items[i.id]).concat(touched.filter(id => !d.ids.includes(id)).map(id => S.items[id]));
+      if (d.gsJoin || touched.length) toast('Joined.');
+    }
+    if (changed.some(i => NO_OVERLAP.has(i.k))){
       // tangram pieces fit corner to corner and never overlap: a piece dropped on another goes back
       const s = tgCornerSnap(changed); if (s) changed.forEach(i => { i.x += s.dx; i.y += s.dy; });
       if (tgClash(changed)){
         if (d.fromTray) tgClear(changed);
-        else { changed.forEach(i => { const o = d.orig.get(i.id); if (o){ i.x = o.x; i.y = o.y; } }); toast('Tangram pieces can’t overlap, so the piece went back.'); }
+        else { changed.forEach(i => { const o = d.orig.get(i.id); if (o){ i.x = o.x; i.y = o.y; } }); toast(changed.some(i => i.k === 'pm') ? 'Pentominoes can’t overlap, so the piece went back.' : 'Tangram pieces can’t overlap, so the piece went back.'); }
       }
     }
     pend.clear(); clearTimeout(pendT); pendT = 0;
@@ -2891,6 +3529,15 @@ function snapToTap(s){
 tray.addEventListener('pointerdown', e => {
   const cs = e.target.closest('[data-ctu]');
   if (cs){ e.preventDefault(); S.ctu = cs.dataset.ctu; ls.set('mml-ctu', S.ctu); buildTray(); return; }   // color tile size
+  const ge = e.target.closest('[data-gse]');
+  if (ge){ e.preventDefault(); S.gsEnds = ge.dataset.gse === '1'; ls.set('mml-gsends', S.gsEnds ? '1' : '0'); buildTray(); return; }   // geo strip holes
+  const po = e.target.closest('[data-pmone]'), pc = e.target.closest('[data-pmcol]');
+  if (po || pc){   // pentomino colors (this device only): redraw the tray and every pentomino on the board
+    e.preventDefault();
+    if (po){ S.pmOne = po.dataset.pmone === '1'; ls.set('mml-pmone', S.pmOne ? '1' : '0'); }
+    if (pc){ S.pmCol = pc.dataset.pmcol; ls.set('mml-pmcol', S.pmCol); }
+    buildTray(); render(); return;
+  }
   const t = e.target.closest('.tile');
   if (!t || e.button > 0 || D) return;
   e.preventDefault();
@@ -2915,7 +3562,7 @@ tray.addEventListener('click', e => {
   if (t.dataset.pid.startsWith('dot')){ toast('Drag the dot into a box of a dot machine.'); return; }
   if (t.dataset.pid === 'nlpt'){ toast('Drag the point onto a number line. Drag it again to add more points.'); return; }
   if (t.dataset.pid === 'tgset'){ const pre = begin(), c = viewCenter(); placeTgSet(c.x, c.y); commit(pre); return; }
-  const pre = begin(), o = (cascade++ % 8) * 26, c = viewCenter(), it = bgSnap([make(tpl(t.dataset.pid), c.x - 80 + o, c.y - 50 + o)])[0];
+  const pre = begin(), o = (cascade++ % 8) * 26, c = viewCenter(), it = tgClear(bgSnap([make(tpl(t.dataset.pid), c.x - 80 + o, c.y - 50 + o)]))[0];
   put([it]); S.sel = new Set([it.id]); commit(pre);
 });
 bar.addEventListener('click', e => { const b = e.target.closest('[data-act]'); if (b) doAction(b.dataset.act); });
@@ -3171,6 +3818,8 @@ $('#helpBtn').onclick = () => openDlg(`<h2>How to use Edutorium Live</h2><div cl
     <li><b>Area model size:</b> drag the blue grip in the bottom-right corner of the model to make it bigger or smaller.</li>
     <li><b>Product mat with base ten blocks:</b> ones and tens on the top and left bands are the factors; hundreds, tens and ones in the product snap into the cells, making the rectangle. Values shows, for example, 11 × 12 = 132.</li>
     <li><b>Tangrams:</b> the tangram arrives as the square; then move each of the 7 pieces on its own. Pieces can touch but never overlap, and click corner to corner when dropped close. Rotate turns 45°, Flip turns a piece over, and <b>Color</b> changes the color (orange to start).</li>
+    <li><b>Dots:</b> drag a dot of any of the 10 colors from <b>Dots</b> in the side menu onto the board (or click it to drop one in the middle). Move dots like any piece; they click onto the background's dots or squares, so growing patterns stay neat. Copy (Ctrl+D) makes more; drag a dot back to the menu or press Delete to remove it. Select a stage with <b>Values</b> on to count its dots.</li>
+    <li><b>Pentominoes:</b> the 12 shapes made of 5 squares (1 inch each). Choose <b>Separate colors</b> or <b>One color</b> (and the color) above them. Rotate turns 90°, Flip mirrors. Pentominoes can touch but never overlap, and snap to the Inch grid.</li>
     <li><b>Color tiles:</b> choose <b>1 inch</b> or <b>1 cm</b> above the red, blue, yellow and green tiles. On the <b>Inch grid</b> or <b>Centimeter grid</b> background (Background button), tiles snap onto the grid.</li>
     <li><b>Isometric dots:</b> with this background, pattern blocks snap their corners onto the dots and rotate 60° at a time so they stay on the dots.</li>
     <li><b>FDP grids</b> (fraction, decimal, percent): click squares on a Hundred grid or Ten strip to shade them, or drag across them. Click the value button underneath to switch between percent, fraction and decimal. <b>Two colours</b> adds Blue and Yellow buttons on the grid (each square is one colour), and the value button shows both amounts. <b>One colour</b> switches back. Double-click the frame (or Edit) to change the size; <b>Clear shading</b> empties it.</li>
