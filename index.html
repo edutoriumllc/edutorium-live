@@ -134,11 +134,25 @@ main{display:grid;grid-template-columns:224px minmax(0,1fr);min-height:0}
 #actionbar{position:absolute;top:18px;left:50%;transform:translateX(-50%);z-index:5;background:var(--panel);border:1px solid var(--line);
   border-radius:12px;box-shadow:var(--shadow);padding:4px;max-width:calc(100% - 32px)}
 #actionbar[hidden]{display:none}
+#actionbar.moved{transform:none}
+.barrow{display:flex;gap:4px;align-items:stretch}
+.barmain{min-width:0;flex:1}
+.bargrip{flex:none;width:14px;border-radius:8px;cursor:grab;touch-action:none;opacity:.55;
+  background:radial-gradient(circle,currentColor 1.3px,transparent 1.7px) center/6px 6px;color:var(--muted)}
+.bargrip:hover{opacity:1;background-color:var(--chip-hover)}
+#actionbar.dragging .bargrip{cursor:grabbing}
 .acts{display:flex;flex-wrap:wrap;gap:2px;justify-content:center}
 .act{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 9px;border:0;border-radius:8px;background:transparent;cursor:pointer;font-size:12.5px;font-weight:600}
 .act:hover{background:var(--chip-hover)}
 .act svg{width:18px;height:18px}
 .act.danger{color:var(--danger)}
+.act.fasw{width:26px;padding:0;justify-content:center}
+.act.fasw i{width:18px;height:18px;border-radius:50%;background:var(--c);box-shadow:0 0 0 1px rgba(0,0,0,.15)}
+.act.fasw.on i{box-shadow:0 0 0 2px var(--panel),0 0 0 4px currentColor}
+.fasplit{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin:10px 0}
+.faacc{position:fixed;perspective:1800px;z-index:40;pointer-events:none}
+.faacc .pan{position:relative;height:100%;transform-style:preserve-3d;transform-origin:left center;transition:transform .75s ease-in-out;box-shadow:inset 0 0 0 2px #374151;background:#ffffff}
+.faacc .pan .pan{position:absolute;left:100%;top:0;width:100%}
 .val{font-size:13px;padding:6px 10px 4px;border-top:1px solid var(--line);margin-top:4px;text-align:center;font-variant-numeric:tabular-nums}
 
 /* dialog */
@@ -524,7 +538,7 @@ function matZones(it){
   const { w, h } = MATS.apr, P = matRegions(it)[2];
   return [{ x:P.x - 6, y:-20, w:w - P.x + 6, h:P.y + 18, role:'A' }, { x:-20, y:P.y - 6, w:P.x + 18, h:h - P.y + 6, role:'B' }, { ...P, role:'P' }];
 }
-const NO_TURN = new Set(['tap', 'kk', 'ab', 'amx', 'aeq', 'apr', 'avol']);   // pieces that never rotate (3D blocks use Turn instead)
+const NO_TURN = new Set(['tap', 'kk', 'ab', 'amx', 'aeq', 'apr', 'avol', 'fa']);   // pieces that never rotate (3D blocks use Turn instead)
 function kkPath(n){
   if (!n) return 'M18 32C34 42 48 56 50 72C52 90 44 100 38 100C30 100 25 90 29 78C35 60 52 42 64 30';
   const a = Math.floor(n / 5), b = n % 5, L = 16, R = 64;
@@ -543,12 +557,18 @@ function kkPath(n){
   return d;
 }
 const MAT = new Set(['tf','nl','tap','amx','aeq','apr','avol']);
-const KINDS = new Set(['b1','b10','b100','b1000','f','rod','a1','ax','ax2','ctr','tf','sh','nl','txt','ink','tap','corn','pea','bean','lupin','xd','pg','am','kk','ab','amx','aeq','apr','avol','tg','ct','pd','pm','gs']);
+const KINDS = new Set(['b1','b10','b100','b1000','f','rod','a1','ax','ax2','ctr','tf','sh','nl','txt','ink','tap','corn','pea','bean','lupin','xd','pg','am','kk','ab','amx','aeq','apr','avol','tg','ct','pd','pm','gs','fa']);
 /* Geo strips (original design): strips 2–10 units long with a hole every unit (GS_U = 60 = one inch-grid square, two iso-dot gaps).
    Item {k:'gs', L, e (ends only), j:[[hole, otherId, otherHole]…] joints (kept on both strips), pn:[hole…] pins}.
    The strip lies along its length from (x + GS_P, y + GS_P), turned r degrees about its centre like every other piece. */
 const GS_U = 60, GS_P = 14, GS_SNAP = 18;
 const GS_C = { 2:'#E4572E', 3:'#F3A712', 4:'#7CB342', 5:'#29A3DB', 6:'#5C6BC0', 7:'#AB47BC', 8:'#E84A8A', 9:'#8D6E63', 10:'#1F9E8F' };
+/* Fraction area (from code/tool-explorations/fraction-area): a wide rectangle = one whole, folded or split into 1–12 equal parts and shaded.
+   Item {k:'fa', n, sh:'0…6' per part (0 = not shaded, 1–6 = FA_COL), how:'fold' (dashed creases) | 'split' (solid lines), br (broken apart)}.
+   Every whole is the same size (FA_W × FA_H) inside a light frame (FA_PAD) that is the handle for moving it. */
+const FA_W = 600, FA_H = 130, FA_PAD = 14, FA_GAP = 12;
+const FA_COL = ['#3A8F8F','#4F95DB','#F39C33','#9B6BD9','#62BF84','#E4572E'];
+const FA_NAMES = { 1:'one whole', 2:'halves', 3:'thirds', 4:'fourths', 5:'fifths', 6:'sixths', 7:'sevenths', 8:'eighths', 9:'ninths', 10:'tenths', 11:'elevenths', 12:'twelfths' };
 const GS_NM = { 3:'triangle', 4:'quadrilateral', 5:'pentagon', 6:'hexagon', 7:'heptagon', 8:'octagon', 9:'nonagon', 10:'decagon' };
 
 function size(it){
@@ -580,6 +600,7 @@ function size(it){
     case 'pm':  return PM[it.s].bb;
     case 'ct':  { const a = CT_SIZE[it.u] || 60; return { w:a, h:a }; }
     case 'gs':  return { w:it.L*GS_U + 2*GS_P, h:2*GS_P };
+    case 'fa':  return { w:FA_W + 2*FA_PAD + (it.br ? (it.n - 1)*FA_GAP : 0), h:FA_H + 2*FA_PAD };   // broken pieces keep their size; the gaps make it wider
     case 'nl':  return { w:it.w, h:96 };
     case 'txt': return { w:Math.max(30, [...it.text].length*it.fs*0.56), h:it.fs*1.3 };
     case 'ink': return { w:it.w, h:it.h };
@@ -601,6 +622,28 @@ function mixedText(v, p){ // v in parts of 1/p
 
 function inner(it, L = S.labels){
   const k = it.k;
+  if (k === 'fa'){
+    // a light frame (the handle), then the whole: one rectangle with creases (dashed) or cut lines (solid), or separate pieces when broken apart
+    const n = it.n, pw = FA_W/n, g = it.br ? FA_GAP : 0, { w, h } = size(it), y = FA_PAD;
+    let s = `<rect x="1" y="1" width="${w - 2}" height="${h - 2}" rx="12" fill="#eef1f6" stroke="#d5dbe4" stroke-width="1.5" data-faframe="1"/>`, lines = '', labs = '';
+    for (let i = 0; i < n; i++){
+      const x = FA_PAD + i*(pw + g), c = +it.sh[i];
+      s += `<rect data-fap="${i}" x="${x}" y="${y}" width="${pw}" height="${FA_H}" fill="${c ? FA_COL[c - 1] : '#ffffff'}"${it.br ? ' stroke="#374151" stroke-width="3" rx="3"' : ''} style="cursor:pointer"/>`;
+      if (!it.br && i) lines += `<path d="M${x} ${y}V${y + FA_H}" stroke="${it.how === 'split' ? '#374151' : '#7b8494'}" stroke-width="${it.how === 'split' ? 2.5 : 2}"${it.how === 'split' ? '' : ' stroke-dasharray="7 5"'}/>`;
+      if (L) labs += n === 1 ? `<text x="${x + pw/2}" y="${y + FA_H/2 + 9}" font-size="26" font-weight="700" fill="#1f2937" text-anchor="middle">1</text>`
+                             : fracLabel(1, n, x + pw/2, y + FA_H/2 - 4, c ? '#ffffff' : '#1f2937', n > 9 ? 16 : 20);
+    }
+    if (!it.br) s += lines + `<rect x="${FA_PAD}" y="${y}" width="${FA_W}" height="${FA_H}" fill="none" stroke="#374151" stroke-width="3"/>`;
+    s += `<g pointer-events="none">${labs}</g>`;
+    if (it.cl !== undefined){
+      // Compare: a red line at the same place along every whole (drag it; it clicks onto part edges)
+      const cx = faLineX(it, it.cl);
+      s += `<g data-facl="1" style="cursor:ew-resize"><rect x="${cx - 12}" y="0" width="24" height="${h}" fill="transparent"/>`+
+           `<path d="M${cx} 2V${h - 2}" stroke="#dc2626" stroke-width="4" stroke-linecap="round"/>`+
+           `<circle cx="${cx}" cy="${FA_PAD/2 + 1}" r="7" fill="#dc2626" stroke="#ffffff" stroke-width="2"/></g>`;
+    }
+    return s;
+  }
   if (k === 'gs'){
     // a rounded strip with a hole at every unit (or only at its ends); each hole has a bigger invisible target for grabbing
     const c = GS_C[it.L] || '#64748B', d = mix(c, '#000000', .34), len = it.L*GS_U;
@@ -726,8 +769,7 @@ function inner(it, L = S.labels){
              `<rect x="${x + (v === 'v' ? 12 : 8)}" y="${v === 'v' ? 15 : 19}" width="${v === 'v' ? 9 : 17}" height="${v === 'v' ? 16 : 8}" rx="2" fill="${PG_COL[c]}" stroke="${PG_INK[c]}" stroke-width="1.2"/>`+
              `<text x="${x + 31}" y="28.5" font-size="15" font-weight="${on ? 800 : 600}" fill="#1f2937">${name}</text></g>`;
     };
-    s += chip('v', ox, 'Vertical', 1) + chip('h', ox + 136, 'Horizontal', 2);
-    // open axes: the x axis along the bottom, the y axis up the left
+    s += chip('v', ox, 'Vertical', 1) + chip('h', ox + 136, 'Horizontal', 2);    // open axes: the x axis along the bottom, the y axis up the left
     s += `<rect x="${ox}" y="${AM_T}" width="${AS}" height="${AS}" fill="#fcfbf7" stroke="#cbd5e1" stroke-dasharray="6 6" pointer-events="none"/>`+
          `<path d="M${ox} ${oy}H${ox + AS + 14}M${ox} ${oy}V${AM_T - 6}" stroke="#1f2937" stroke-width="2.5" pointer-events="none"/>`+
          `<path d="M${ox + AS + 18} ${oy}l-10 -5v10zM${ox} ${AM_T - 10}l-5 10h10z" fill="#1f2937" pointer-events="none"/>`+
@@ -1268,6 +1310,9 @@ function clean(o){
     case 'ct':  it.c = Object.prototype.hasOwnProperty.call(CT_COL, o.c) ? o.c : 'r'; it.u = o.u === 'cm' ? 'cm' : 'in'; break;
     case 'pd':  it.c = DOT_COLS.some(d => d[0] === o.c) ? o.c : DOT_COLS[0][0]; it.r = 0; break;
     case 'pm':  it.s = Object.prototype.hasOwnProperty.call(PM, o.s) ? o.s : 'F'; if (o.fl) it.fl = true; break;
+    case 'fa':  if (o.cl !== undefined && o.cl !== null && Number.isFinite(+o.cl)) it.cl = num(o.cl, 0.5, 0, 1);   // Compare line
+                it.n = Math.round(num(o.n,1,1,12)); it.sh = String(o.sh || '').replace(/[^0-6]/g, '').slice(0, it.n).padEnd(it.n, '0');
+                it.how = o.how === 'split' ? 'split' : 'fold'; if (o.br && it.n > 1) it.br = true; it.r = 0; break;
     case 'gs':  it.L = Math.round(num(o.L,4,2,10)); if (o.e) it.e = true;
                 if (Array.isArray(o.j) && o.j.length)
                   it.j = o.j.slice(0,40).filter(v => Array.isArray(v) && /^[\w-]{1,40}$/.test(String(v[1])))
@@ -1346,6 +1391,7 @@ function tpl(pid){
   if (pid.startsWith('sh-')) return { k:'sh', s:pid.slice(3) };
   if (pid.startsWith('tg-')) return { k:'tg', s:pid.slice(3) };
   if (pid.startsWith('pm-')) return { k:'pm', s:pid.slice(3) };
+  if (pid === 'fa') return { k:'fa', n:1, sh:'0', how:'fold' };   // one whole, not folded yet
   const gsm = pid.match(/^gs(\d+)$/); if (gsm) return S.gsEnds ? { k:'gs', L:+gsm[1], e:true } : { k:'gs', L:+gsm[1] };   // holes at the ends only, if chosen in the tray
   if (pid.startsWith('pd:')) return { k:'pd', c:pid.slice(3) };
   if (pid.startsWith('ct-')){ const [, c, u] = pid.split('-'); return { k:'ct', c, u:u || S.ctu }; }   // the size chosen in the tray
@@ -1360,6 +1406,7 @@ const GROUPS = [
   { id:'area', name:'Area model', tiles:[['am','Area model']] },
   { id:'taptinita', name:'Taptinita', tiles:[['tap','Taptinita'],['corn','Corn'],['pea','Pea'],['bean','Bean'],['lupin','Lupin']] },
   { id:'fractions', name:'Fraction bars', wall:FW, tiles:FDEN.map(n => ['f'+n, n===1 ? 'One whole' : 'One ' + ({2:'half',3:'third',4:'fourth',5:'fifth',6:'sixth',8:'eighth',10:'tenth',12:'twelfth'})[n]]) },
+  { id:'fractionarea', name:'Fraction area', wall:FA_W + 2*FA_PAD, tiles:[['fa','One whole']] },
   { id:'rods', name:'Number rods', wall:10*RU, tiles:[1,2,3,4,5,6,7,8,9,10].map(n => ['rod'+n, 'Rod ' + n]) },
   { id:'dots', name:'Exploding Dots', xd:true, tiles:[['xd','Dot machine'],['dotp','Dot'],['dotn','Anti-dot']] },
   { id:'kaktovik', name:'Kaktovik numerals', kak:true, tiles:[...Array(20)].map((_, n) => ['kk' + n, String(n)]) },
@@ -2030,6 +2077,116 @@ function gsValue(list){
     ` · angles ${P.angs.map(a => Math.round(a.deg) + '°').join(', ')} (sum ${Math.round(P.sum)}°) · perimeter ${P.per} · area ${Math.round(P.area*10)/10} square units`)).join('   ·   ');
 }
 
+/* ---------- fraction area: fold, split, break apart, line up, shade ---------- */
+S.faCol = Math.round(num(ls.get('mml-facol'), 0, 0, FA_COL.length - 1));   // the shading color picked in the bar (this device)
+// new number of parts: shading carries over when parts subdivide (½ → 2/4) or old parts fill new ones exactly
+function faRegrid(it, n2){
+  const n1 = it.n, a = it.sh.split(''), out = Array(n2).fill('0');
+  let lost = false;
+  if (n2 % n1 === 0){ const m = n2/n1; a.forEach((c, i) => { for (let j = 0; j < m; j++) out[i*m + j] = c; }); }
+  else if (n1 % n2 === 0){
+    const m = n1/n2;
+    for (let p = 0; p < n2; p++){ const cs = a.slice(p*m, p*m + m); if (cs.every(c => c !== '0' && c === cs[0])) out[p] = cs[0]; else if (cs.some(c => c !== '0')) lost = true; }
+  } else lost = a.some(c => c !== '0');
+  return { it:{ ...it, n:n2, sh:out.join('') }, lost };
+}
+const faList = () => selList().filter(i => i.k === 'fa' && !i.lock);
+function faFold(k){
+  const list = faList().filter(i => !i.br && i.n*k <= 12);
+  if (!list.length){ toast(faList().some(i => i.br) ? 'Put the pieces together first, then fold.' : 'That would make more than 12 parts.'); return; }
+  const out = list.map(i => ({ ...faRegrid(i, i.n*k).it, how:'fold' }));
+  act(() => put(out));
+  faAnim(out.map(i => i.id));
+  toast(`Folded into ${out[0].n} equal parts: ${FA_NAMES[out[0].n]}.`);
+}
+function faSplit(list, n){
+  let lost = false;
+  const out = list.map(i => { const r = faRegrid(i, n); lost = lost || r.lost; const o = { ...r.it, how:'split' }; if (n === 1) delete o.br; return o; });
+  act(() => put(out));
+  if (lost) toast('Shading was cleared where the new parts don’t match the old ones.');
+}
+function faSplitDialog(){
+  const list = faList(); if (!list.length) return;
+  openDlg(`<h2>Split into equal parts</h2><p>Solid lines, from one whole up to twelfths. Shading stays where the new parts fit.</p>`+
+    `<div class="fasplit">${[...Array(12)].map((_, i) => `<button class="btn" value="${i + 1}" title="${FA_NAMES[i + 1]}">${i + 1}</button>`).join('')}</div>`+
+    `<menu><button class="btn" value="cancel">Close</button></menu>`, v => { if (+v) faSplit(faList(), +v); });
+}
+// Line up: the shaded parts slide to the left end (no gaps), each color kept together in the order it first appears
+function faLineUp(){
+  const out = [];
+  for (const i of faList()){
+    const cs = i.sh.split('').filter(c => c !== '0'), order = [...new Set(cs)];
+    cs.sort((a, b) => order.indexOf(a) - order.indexOf(b));
+    const sh = cs.join('').padEnd(i.n, '0');
+    if (sh !== i.sh) out.push({ ...i, sh });
+  }
+  if (!out.length){ toast('The shading already starts at the left with no gaps.'); return; }
+  act(() => put(out));
+  toast('Lined up: the same shaded amount, now starting from the left.');
+}
+function faPaint(i){
+  const it = S.items[D.id]; if (!it || i >= it.n) return;
+  const c = D.set ? String(S.faCol + 1) : '0';
+  if (it.sh[i] === c) return;
+  S.items[D.id] = { ...it, sh:it.sh.slice(0, i) + c + it.sh.slice(i + 1) }; dirty();
+}
+// folding, seen on this screen: an HTML copy of the whole folds up like an accordion over the piece, then opens again
+function faAnim(ids){
+  if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const m = svg.getScreenCTM(); if (!m) return;
+  for (const id of ids){
+    const it = S.items[id], g = els.get(id); if (!it) continue;
+    const acc = document.createElement('div'); acc.className = 'faacc';
+    Object.assign(acc.style, { left:(m.a*(it.x + FA_PAD) + m.e) + 'px', top:(m.d*(it.y + FA_PAD) + m.f) + 'px', width:(FA_W*m.a) + 'px', height:(FA_H*m.d) + 'px' });
+    let html = '';
+    for (let i = it.n - 1; i >= 0; i--){ const c = +it.sh[i]; html = `<div class="pan" style="${c ? 'background:' + FA_COL[c - 1] : ''}">${html}</div>`; }
+    acc.innerHTML = html; acc.firstChild.style.width = (FA_W*m.a/it.n) + 'px';
+    document.body.appendChild(acc);
+    if (g) g.style.visibility = 'hidden';
+    const pans = [...acc.querySelectorAll('.pan')].slice(1);
+    requestAnimationFrame(() => requestAnimationFrame(() => pans.forEach((p, i) => p.style.transform = `rotateY(${i % 2 ? 178 : -178}deg)`)));
+    setTimeout(() => pans.forEach(p => p.style.transform = 'rotateY(0deg)'), 1150);
+    setTimeout(() => { acc.remove(); const e = els.get(id); if (e) e.style.visibility = ''; }, 2000);
+  }
+}
+/* Compare (from the Fraction Area app): a red line across the wholes. cl = where it is, as a fraction of a whole (0–1);
+   every whole with the line shows it at the same fraction, and dragging it on any whole moves it on all of them. */
+// where fraction f of the whole is, across the piece (broken-apart pieces have gaps; at a cut the line sits in the gap)
+function faLineX(it, f){
+  const n = it.n, pw = FA_W/n, g = it.br ? FA_GAP : 0, k = f*n, ki = Math.round(k);
+  if (g && Math.abs(k - ki) < 1e-6 && ki > 0 && ki < n) return FA_PAD + ki*pw + (ki - 1)*g + g/2;
+  return FA_PAD + f*FA_W + Math.min(n - 1, Math.floor(k))*g;
+}
+// the fraction of the whole at a point across the piece (the reverse of faLineX)
+function faFracAt(it, lx){
+  const n = it.n, pw = FA_W/n, g = it.br ? FA_GAP : 0, i = Math.max(0, Math.min(n - 1, Math.floor((lx - FA_PAD)/(pw + g))));
+  return Math.max(0, Math.min(1, (i + Math.max(0, Math.min(1, (lx - FA_PAD - i*(pw + g))/pw)))/n));
+}
+function faCompare(){
+  const all = Object.values(S.items).filter(i => i.k === 'fa' && !i.lock);
+  if (!all.length) return;
+  if (all.some(i => i.cl !== undefined)){ act(() => put(all.map(i => { const n = { ...i }; delete n.cl; return n; }))); return; }
+  act(() => put(all.map(i => ({ ...i, cl:0.5 }))));
+  toast('Drag the red line along a whole; it moves on every whole and clicks onto part edges. Turn on Values and select the wholes to read the comparison.');
+}
+const faShaded = i => i.sh.split('').filter(c => c !== '0').length;
+function faFrac(k, n){ if (!k) return '0'; if (k === n) return n === 1 ? '1' : `${k}/${n} = 1`; const g = gcd(k, n); return g > 1 ? `${k}/${n} = ${k/g}/${n/g}` : `${k}/${n}`; }
+// Values: the shaded amount of each selected whole (top to bottom), and how each compares with the next
+function faValue(list){
+  const fas = list.filter(i => i.k === 'fa').sort((a, b) => a.y - b.y); if (!fas.length) return '';
+  const parts = fas.map(i => faFrac(faShaded(i), i.n));
+  let s = `Shaded: ${parts.join('   ·   ')}`;
+  if (fas.length > 1){
+    const cmp = [];
+    for (let j = 0; j + 1 < fas.length; j++){
+      const a = fas[j], b = fas[j + 1], x = faShaded(a)*b.n, y = faShaded(b)*a.n;
+      cmp.push(`${faShaded(a) ? faShaded(a) + '/' + a.n : '0'} ${x === y ? '=' : x > y ? '>' : '<'} ${faShaded(b) ? faShaded(b) + '/' + b.n : '0'}`);
+    }
+    s += `   ·   Compare: ${cmp.join(',  ')}`;
+  }
+  return s;
+}
+
 /* ---------- rendering ---------- */
 const els = new Map();
 let rq = 0;
@@ -2349,6 +2506,7 @@ function valueText(list){
   const tgs = list.filter(i => i.k === 'tg');
   if (tgs.length) parts.push(`Tangram pieces: ${tgs.length} of 7`);
   const gsv = gsValue(list); if (gsv) parts.push(gsv);
+  const fav = faValue(list); if (fav) parts.push(fav);
   const pds = list.filter(i => i.k === 'pd');
   if (pds.length){
     // dots by color, then the total (for growing patterns: select a stage to count it)
@@ -2408,6 +2566,7 @@ function valueText(list){
 
 /* ---------- selection actions ---------- */
 const IC = {
+  facmp:'<path d="M10 2.5v15" stroke="#dc2626"/><rect x="2.5" y="5" width="15" height="4" rx="1"/><rect x="2.5" y="11" width="15" height="4" rx="1"/>',
   rotL:'<path d="M4.5 10a5.5 5.5 0 105.5-5.5H7"/><path d="M8.5 2.5L6.5 4.5l2 2"/>',
   rotR:'<path d="M15.5 10A5.5 5.5 0 1110 4.5h3"/><path d="M11.5 2.5l2 2-2 2"/>',
   flip:'<path d="M3 7h11l-3-3M17 13H6l3 3"/>',
@@ -2427,7 +2586,14 @@ const IC = {
   abturn:'<path d="M4 7l4-3h9l-4 3z"/><path d="M4 7h9v9H4z"/><path d="M13 7l4-3v9l-4 3"/>',
   ungrp:'<rect x="2.5" y="2.5" width="6.5" height="6.5" rx="1.3"/><rect x="11" y="11" width="6.5" height="6.5" rx="1.3"/><path d="M12 3.5l4.5 4.5M16.5 3.5L12 8"/>',
   gspin:'<circle cx="10" cy="7" r="4"/><path d="M10 11v6.5"/>',
-  gssep:'<circle cx="5.5" cy="10" r="2.5"/><circle cx="14.5" cy="10" r="2.5"/><path d="M8 10h1M11 10h1"/>'
+  gssep:'<circle cx="5.5" cy="10" r="2.5"/><circle cx="14.5" cy="10" r="2.5"/><path d="M8 10h1M11 10h1"/>',
+  fa2:'<rect x="2.5" y="5.5" width="15" height="9" rx="1"/><path d="M10 5.5v9" stroke-dasharray="2 1.6"/>',
+  fa3:'<rect x="2.5" y="5.5" width="15" height="9" rx="1"/><path d="M7.5 5.5v9M12.5 5.5v9" stroke-dasharray="2 1.6"/>',
+  fa5:'<rect x="2.5" y="5.5" width="15" height="9" rx="1"/><path d="M5.5 5.5v9M8.5 5.5v9M11.5 5.5v9M14.5 5.5v9" stroke-dasharray="2 1.6"/>',
+  fabrk:'<rect x="1.5" y="5.5" width="4.5" height="9" rx="1"/><rect x="7.75" y="5.5" width="4.5" height="9" rx="1"/><rect x="14" y="5.5" width="4.5" height="9" rx="1"/>',
+  fajoin:'<rect x="2.5" y="5.5" width="15" height="9" rx="1"/><path d="M7.5 5.5v9M12.5 5.5v9"/>',
+  fasplit:'<rect x="2.5" y="5.5" width="15" height="9" rx="1"/><path d="M6.25 5.5v9M10 5.5v9M13.75 5.5v9"/>',
+  faline:'<path d="M3 4v12"/><rect x="5.5" y="5.5" width="5" height="9" rx="1" fill="currentColor"/><rect x="11" y="5.5" width="6" height="9" rx="1"/>'
 };
 const ico = n => `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${IC[n]}</svg>`;
 const abtn = (a, icon, label, extra='') => `<button type="button" class="act ${extra}" data-act="${a}" title="${label}" aria-label="${label}">${ico(icon)}<span class="lbl">${label}</span></button>`;
@@ -2456,13 +2622,27 @@ function updateBar(){
   // a geo strip hole or joint that was clicked: pin it, or separate the strips joined there
   const gh = S.gsHole && S.items[S.gsHole[0]] && S.sel.has(S.gsHole[0]) ? S.gsHole : null;
   const ghG = gh ? gsGroup(gh, gsNodes()) : null, ghPin = ghG ? ghG.some(gsPinned) : false, ghJoin = ghG ? new Set(ghG.map(h => h[0])).size > 1 : false;
-  const sig = list.map(i => i.id + i.k + (i.neg?1:0) + (i.lock?1:0) + (i.grp || '')).join() + '|' + v + '|' + (gh ? gh.join(':') + ghPin + ghJoin : '');
+  const sig = list.map(i => i.id + i.k + (i.neg?1:0) + (i.lock?1:0) + (i.grp || '') + (i.k === 'fa' ? i.n + i.sh + (i.br ? 'b' : '') + (i.cl !== undefined ? 'c' : '') : '')).join() + '|' + v + '|' + (gh ? gh.join(':') + ghPin + ghJoin : '') + '|' + S.faCol;
   if (sig === bar._sig) return;
   bar._sig = sig;
   const b = list.some(i => !NO_TURN.has(i.k)) ? [abtn('rotL','rotL','Rotate left'), abtn('rotR','rotR','Rotate right')] : [];
   if (gh){
     if (ghJoin) b.push(abtn('gssep','gssep','Separate'));
     b.push(abtn('gspin','gspin', ghPin ? 'Unpin' : 'Pin'));
+  }
+  const fas = list.filter(i => i.k === 'fa' && !i.lock);
+  if (fas.length){
+    // fraction area: the folds and Break apart first, then Split into…, Line up and the shading colors
+    const can = k => fas.some(i => !i.br && i.n*k <= 12);
+    if (can(2)) b.push(abtn('fa2','fa2','Fold in half'));
+    if (can(3)) b.push(abtn('fa3','fa3','Fold in thirds'));
+    if (can(5)) b.push(abtn('fa5','fa5','Fold in fifths'));
+    if (fas.some(i => i.n > 1)) b.push(fas.every(i => i.br) ? abtn('fabrk','fajoin','Put together') : abtn('fabrk','fabrk','Break apart'));
+    b.push(abtn('fasplit','fasplit','Split into…'));
+    if (fas.some(i => /[1-6]/.test(i.sh))) b.push(abtn('faline','faline','Line up'));
+    b.push(abtn('facmp','facmp', Object.values(S.items).some(i => i.k === 'fa' && i.cl !== undefined) ? 'Hide compare line' : 'Compare'));
+    FA_COL.forEach((c, i) => b.push(`<button type="button" class="act fasw${i === S.faCol ? ' on' : ''}" data-act="facol${i}" style="--c:${c}" title="Shade with this color" aria-label="Shade color ${i + 1}" aria-pressed="${i === S.faCol}"><i></i></button>`));
+    if (fas.some(i => /[1-6]/.test(i.sh))) b.push(abtn('faclr','zero','Clear shading'));
   }
   if (list.some(i => i.k === 'ctr' || AL[i.k] || i.k === 'ab' || i.k === 'tg' || i.k === 'pm')) b.push(abtn('flip','flip','Flip'));
   if (list.some(i => i.k === 'tg' && !i.lock)) b.push(abtn('tgcol','tgcol','Color'));
@@ -2483,8 +2663,9 @@ function updateBar(){
   const allLocked = list.every(i => i.lock);
   b.push(abtn('lock', allLocked ? 'unlock' : 'lock', allLocked ? 'Unlock' : 'Lock'));
   b.push(abtn('del','del','Delete','danger'));
-  bar.innerHTML = `<div class="acts">${b.join('')}</div>` + (v ? `<div class="val">${esc(v)}</div>` : '');
-  bar.hidden = false;
+  bar.innerHTML = `<div class="barrow"><span class="bargrip" title="Drag to move this bar out of the way (double-click to put it back)" aria-hidden="true"></span>`+
+                  `<div class="barmain"><div class="acts">${b.join('')}</div>` + (v ? `<div class="val">${esc(v)}</div>` : '') + `</div></div>`;
+  bar.hidden = false; placeBar();
 }
 
 function doAction(a){
@@ -2595,7 +2776,17 @@ function doAction(a){
   } else if (a === 'del'){
     if (free.length < list.length) toast('Locked pieces were kept. Unlock them first to delete.');
     act(() => { drop(withSeeds(free).filter(i => !i.lock).map(i => i.id)); gsUnlink(); relayout(); prodLayout(); volLayout(); });
-  } else if (a === 'gssep' || a === 'gspin'){
+  } else if (a === 'fa2' || a === 'fa3' || a === 'fa5') faFold(+a.slice(2));
+  else if (a === 'fabrk'){
+    const fl = faList().filter(i => i.n > 1); if (!fl.length) return;
+    const br = !fl.every(i => i.br);
+    act(() => put(fl.map(i => { const n = { ...i }; if (br) n.br = true; else delete n.br; return n; })));
+  } else if (a === 'fasplit') faSplitDialog();
+  else if (a === 'faline') faLineUp();
+  else if (a === 'facmp') faCompare();
+  else if (a === 'faclr') act(() => put(faList().map(i => ({ ...i, sh:'0'.repeat(i.n) }))));
+  else if (a.startsWith('facol')){ S.faCol = +a.slice(5); ls.set('mml-facol', String(S.faCol)); bar._sig = ''; updateBar(); }
+  else if (a === 'gssep' || a === 'gspin'){
     const gh = S.gsHole; if (!gh || !S.items[gh[0]]) return;
     const g = gsGroup(gh, gsNodes()), inG = (id, q) => g.some(h => h[0] === id && h[1] === q);
     if (g.some(h => S.items[h[0]].lock)){ toast('This shape is locked. Unlock it first.'); return; }
@@ -3076,12 +3267,28 @@ svg.addEventListener('pointerdown', e => {
     const now = performance.now(), cellEl = it.k === 'pg' ? e.target.closest('[data-cell]') : null;
     const amEl = it.k === 'am' ? e.target.closest('[data-amcol],[data-amrow],[data-amarea],[data-ambrush],[data-amstep]')
                : it.k === 'avol' ? e.target.closest('[data-volview]') : null;   // (no double-click on these buttons)
-    if (now - lastTap.t < 380 && lastTap.id === it.id && !cellEl && !amEl){   // quick taps on squares or strips just shade them
+    const faLine = it.k === 'fa' && e.target.closest('[data-facl]');
+    if (faLine && !it.lock){
+      // the Compare line: drag it along the whole
+      e.preventDefault();
+      D = { mode:'facl', id:it.id, pre:begin(), moved:false };
+      return;
+    }
+    const faEl = it.k === 'fa' && e.target.closest('[data-fap]');
+    if (now - lastTap.t < 380 && lastTap.id === it.id && !cellEl && !amEl && !faEl){   // quick taps on squares or strips just shade them
       const hi = lastTap.hop; lastTap = { t:0, id:null };
       if (it.k === 'nl' && hi !== null && hi === hopIdx && !it.lock) editHop(it, hi); else dbl(it);
       return;
     }
     lastTap = { t:now, id:it.id, hop:hopIdx };
+    if (faEl && !it.lock){
+      // fraction area: press a part to shade it in the chosen color (or clear it if it already has that color), drag across to do more
+      const i = +faEl.dataset.fap;
+      S.sel = new Set([it.id]); e.preventDefault();
+      D = { mode:'fapaint', id:it.id, set:it.sh[i] !== String(S.faCol + 1), pre:begin() };
+      faPaint(i);
+      return;
+    }
     if (cellEl && !it.lock){
       // shade squares: a press toggles one square, dragging paints the same way across more squares
       // each square takes the brush colour (blue or yellow, never both); pressing on a square already that colour clears instead
@@ -3201,6 +3408,25 @@ window.addEventListener('pointermove', e => {
   if (!D) return;
   if (D.mode === 'pinch'){ if (touches.size >= 2) pinchMove(); return; }
   if (D.mode === 'ampaint'){ amPaint(amIndexAt(e, D.id, D.kind)); return; }
+  if (D.mode === 'facl'){
+    const it = S.items[D.id]; if (!it) return;
+    let f = faFracAt(it, toLocal(it, toB(e)).x);
+    // click onto the nearest part edge of any whole with the line (within 10 on the board)
+    const withLine = Object.values(S.items).filter(i => i.k === 'fa' && i.cl !== undefined);
+    let best = null;
+    for (const w of withLine) for (let q = 0; q <= w.n; q++){ const d = Math.abs(q/w.n - f)*FA_W; if (d < 10 && (!best || d < best.d)) best = { d, v:q/w.n }; }
+    if (best) f = best.v;
+    f = Math.round(f*100000)/100000;
+    for (const w of withLine) if (w.cl !== f) S.items[w.id] = { ...w, cl:f };
+    D.moved = true; dirty(); sendLater(withLine.map(w => w.id));
+    return;
+  }
+  if (D.mode === 'fapaint'){
+    const el = document.elementFromPoint(e.clientX, e.clientY), c = el && el.closest && el.closest('[data-fap]');
+    const g = c && c.closest('#items > g');
+    if (g && g.dataset.id === D.id) faPaint(+c.dataset.fap);
+    return;
+  }
   if (D.mode === 'paint'){
     const el = document.elementFromPoint(e.clientX, e.clientY), c = el && el.closest && el.closest('[data-cell]');
     const g = c && c.closest('#items > g');
@@ -3439,7 +3665,8 @@ function endPointer(e){
     }
     dirty(); return;
   }
-  if (d.mode === 'paint' || d.mode === 'ampaint'){ if (S.items[d.id]) put([S.items[d.id]]); commit(d.pre); return; }
+  if (d.mode === 'facl'){ if (d.moved){ put(Object.values(S.items).filter(i => i.k === 'fa' && i.cl !== undefined)); commit(d.pre); } return; }
+  if (d.mode === 'paint' || d.mode === 'ampaint' || d.mode === 'fapaint'){ if (S.items[d.id]) put([S.items[d.id]]); commit(d.pre); return; }
   if (d.mode === 'move'){
     if (!d.moved){ if (d.pgBtn) pgCycle(d.pgBtn); return; }
     if (e && e.type === 'pointerup' && overTray(e)){
@@ -3566,6 +3793,27 @@ tray.addEventListener('click', e => {
   put([it]); S.sel = new Set([it.id]); commit(pre);
 });
 bar.addEventListener('click', e => { const b = e.target.closest('[data-act]'); if (b) doAction(b.dataset.act); });
+/* the selection bar can be dragged by its grip to anywhere over the board; the spot is remembered on this device */
+let barPos = null;
+try { const p = JSON.parse(ls.get('mml-barpos') || 'null'); if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) barPos = p; } catch(e){}
+function placeBar(){
+  if (!barPos){ bar.classList.remove('moved'); bar.style.left = bar.style.top = ''; return; }
+  const host = bar.parentElement.getBoundingClientRect(), w = bar.offsetWidth || 200, h = bar.offsetHeight || 40;
+  bar.classList.add('moved');
+  bar.style.left = Math.max(0, Math.min(host.width - Math.min(w, host.width), barPos.x)) + 'px';
+  bar.style.top = Math.max(0, Math.min(host.height - Math.min(h, host.height), barPos.y)) + 'px';
+}
+bar.addEventListener('pointerdown', e => {
+  if (!e.target.closest('.bargrip') || e.button > 0) return;
+  e.preventDefault(); e.stopPropagation();
+  const host = bar.parentElement.getBoundingClientRect(), b = bar.getBoundingClientRect(), ox = e.clientX - b.left, oy = e.clientY - b.top;
+  bar.classList.add('dragging');
+  const mv = ev => { barPos = { x:ev.clientX - host.left - ox, y:ev.clientY - host.top - oy }; placeBar(); };
+  const up = () => { bar.classList.remove('dragging'); window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up); if (barPos) ls.set('mml-barpos', JSON.stringify(barPos)); };
+  window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
+});
+bar.addEventListener('dblclick', e => { if (!e.target.closest('.bargrip')) return; barPos = null; ls.set('mml-barpos', 'null'); placeBar(); });   // back to the top middle
+window.addEventListener('resize', () => placeBar());
 
 /* ---------- keyboard ---------- */
 window.addEventListener('keydown', e => {
@@ -3815,6 +4063,7 @@ $('#helpBtn').onclick = () => openDlg(`<h2>How to use Edutorium Live</h2><div cl
     <li><b>Pen:</b> choose <b>Freehand</b> or <b>Line</b> next to the colours. Line draws a straight line from where you press to where you let go (Shift snaps it to 15° steps). In Freehand, hold Shift for a straight line.</li>
     <li><b>Hops:</b> drag a <b style="color:#2563eb">+ hop</b> or <b style="color:#dc2626">− hop</b> from <b>Number lines</b> onto a number line, type its value and press Enter (the + or − is added for you). Drag the arc to slide the hop along the line, the dot to move its start, or the arrowhead to move its end. Click a hop's label to change its value or delete it (×). On Intervals, hops snap to the marks. The eraser rubs hops out too.</li>
     <li><b>Points:</b> drag the <b style="color:#7c3aed">point</b> from <b>Number lines</b> onto a line (again for more points). On Intervals it snaps to a mark. Points start with no label: click one to add a label (such as A or its value) or delete it. Drag a point to slide it.</li>
+    <li><b>Compare (Fraction area):</b> select a whole and choose <b>Compare</b>: a red line goes across every whole at the same place. Drag it on any whole; it moves on all of them and clicks onto part edges. <b>Hide compare line</b> takes it away.</li>
     <li><b>Area model size:</b> drag the blue grip in the bottom-right corner of the model to make it bigger or smaller.</li>
     <li><b>Product mat with base ten blocks:</b> ones and tens on the top and left bands are the factors; hundreds, tens and ones in the product snap into the cells, making the rectangle. Values shows, for example, 11 × 12 = 132.</li>
     <li><b>Tangrams:</b> the tangram arrives as the square; then move each of the 7 pieces on its own. Pieces can touch but never overlap, and click corner to corner when dropped close. Rotate turns 45°, Flip turns a piece over, and <b>Color</b> changes the color (orange to start).</li>
