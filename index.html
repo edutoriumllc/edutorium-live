@@ -243,7 +243,7 @@ body.embed .brand,body.embed #helpBtn{display:none}
   <button class="btn solo" id="saveBtn" title="Save your work"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3v9.5M6 8.8l4 4 4-4M4 16h12"/></svg><span class="lbl">Save</span></button>
   <button class="btn solo" id="linkBtn" title="Copy a link that opens this board"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M8.5 11.5l3-3"/><path d="M9.5 6l1.4-1.4a3 3 0 014.3 4.3L13.8 10.3M10.5 14l-1.4 1.4a3 3 0 01-4.3-4.3L6.2 9.7"/></svg><span class="lbl">Board link</span></button>
   <button class="btn primary" id="togetherBtn" title="Work on the same board with a partner"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="7" cy="7" r="2.6"/><circle cx="14" cy="8" r="2.1"/><path d="M2.5 16c.6-2.8 2.4-4.2 4.5-4.2s3.9 1.4 4.5 4.2M12 12.3c.6-.3 1.3-.5 2-.5 1.8 0 3.2 1.2 3.6 3.6"/></svg><span id="togetherLbl">Work together</span></button>
-  <button class="btn solo" id="feedbackBtn" title="Send feedback to Edutorium"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 4.5h13a1 1 0 011 1v8a1 1 0 01-1 1H8l-3.5 3v-3h-1a1 1 0 01-1-1v-8a1 1 0 011-1z"/><path d="M6.5 8.5h7M6.5 11h4.5"/></svg><span class="lbl">Feedback</span></button>
+  <button class="btn solo" id="feedbackBtn" title="Send feedback to Edutorium (opens a short form)"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 4.5h13a1 1 0 011 1v8a1 1 0 01-1 1H8l-3.5 3v-3h-1a1 1 0 01-1-1v-8a1 1 0 011-1z"/><path d="M6.5 8.5h7M6.5 11h4.5"/></svg><span class="lbl">Feedback</span></button>
   <button class="btn solo" id="helpBtn" title="How to use" aria-label="How to use"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="10" cy="10" r="7.2"/><path d="M8 8a2 2 0 113 1.7c-.7.4-1 .9-1 1.6"/><circle cx="10" cy="14.2" r=".6" fill="currentColor"/></svg></button>
 </header>
 
@@ -4054,32 +4054,14 @@ $('#linkBtn').onclick = async () => {
     <menu><button class="btn primary" value="cancel">Done</button></menu>`, null);
 };
 
-/* Feedback: opens the person's own email app with a message to Edutorium (nothing is sent by this page itself) */
-const FEEDBACK_TO = 'edutoriumllc@gmail.com', FEEDBACK_APP = 'Edutorium Live';
-function feedbackMail(text){
-  const body = text + '\n\n— sent from ' + FEEDBACK_APP + ' (' + location.origin + location.pathname + ')';
-  return { subject:FEEDBACK_APP + ' feedback', body, href:`mailto:${FEEDBACK_TO}?subject=${encodeURIComponent(FEEDBACK_APP + ' feedback')}&body=${encodeURIComponent(body)}` };
-}
+/* Feedback: opens the Edutorium feedback Google Form (answers go to a Google Sheet) in a new tab */
+const FEEDBACK_FORM = 'https://docs.google.com/forms/d/e/1FAIpQLSfquxhMCYc0-P1XsecwrRD8lhhn3BH4lHCSs4fk78Yk6bnjVw/viewform';
 $('#feedbackBtn').onclick = () => {
-  openDlg(`<h2>Send feedback</h2><p>Ideas, problems, or something you would like added? <b>Send by email</b> opens your email app with a message to ${FEEDBACK_TO}, ready to send.</p>
-    <label for="fbText">Your feedback</label>
-    <textarea id="fbText" name="txt" rows="6" maxlength="4000" autofocus placeholder="For example: I would like…" style="width:100%;min-height:120px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:inherit;font:inherit;resize:vertical"></textarea>
-    <p style="margin:8px 0 0;font-size:12.5px">No email app on this device? Use <b>Copy</b> and paste it into an email to ${FEEDBACK_TO}.</p>
-    <menu><button type="button" class="btn" data-fbcopy>Copy</button><button type="button" class="btn" onclick="this.closest('dialog').close()">Cancel</button><button class="btn primary" value="send">Send by email</button></menu>`,
-    (v, fd) => {
-      if (v !== 'send') return;
-      const text = String(fd.get('txt') || '').trim();
-      if (!text){ toast('Type your feedback first.'); return false; }
-      location.href = feedbackMail(text).href;
-      toast(`Your email app should open with the message to ${FEEDBACK_TO}. If nothing opens, use Feedback → Copy instead.`);
-    });
-  dlgForm.querySelector('[data-fbcopy]').onclick = async e => {
-    const text = String(dlgForm.querySelector('#fbText').value || '').trim(), m = feedbackMail(text);
-    const ok = await copyText(`To: ${FEEDBACK_TO}\nSubject: ${m.subject}\n\n${m.body}`);
-    e.target.textContent = ok ? 'Copied' : 'Copy did not work';
-  };
-};
-$('#helpBtn').onclick = () => openDlg(`<h2>How to use Edutorium Live</h2><div class="help">
+  const w = window.open(FEEDBACK_FORM, '_blank', 'noopener');
+  if (!w) openDlg(`<h2>Send feedback</h2><p>Your browser blocked the new tab. Open the feedback form here:</p>
+    <p><a href="${FEEDBACK_FORM}" target="_blank" rel="noopener" style="font-weight:700">Edutorium feedback form</a></p>
+    <menu><button type="button" class="btn primary" onclick="this.closest('dialog').close()">Close</button></menu>`, null);
+};$('#helpBtn').onclick = () => openDlg(`<h2>How to use Edutorium Live</h2><div class="help">
   <ul>
     <li><b>Add pieces:</b> drag them from the left onto the board, or click one.</li>
     <li><b>Move:</b> drag a piece. Drag on empty space to draw a box that selects several. Shift-click adds to a selection.</li>
