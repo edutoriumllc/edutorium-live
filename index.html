@@ -952,13 +952,19 @@ function inner(it, L = S.labels){
     let s = `<rect width="${w}" height="96" fill="transparent"/><path d="M${x0-26} ${y}H${x1+26}" stroke="#1f2937" stroke-width="3"/>`+
             `<path d="M${x0-30} ${y}l13 -8v16zM${x1+30} ${y}l-13 -8v16z" fill="#1f2937"/>`;
     if (!it.open && total > 0 && total <= 240){   // an open number line is just the line and arrows
-      const small = L && p > 1 && total <= 48;
+      const small = L && p > 1 && total <= 48, linked = nlFaDens(it).length > 0;   // lined up with Fraction area wholes: labels stay unsimplified (5/15)
       for (let i=0;i<=total;i++){
         const x = x0 + (x1-x0)*i/total, major = i % p === 0;
         s += `<path d="M${x} ${y-(major?14:9)}V${y+(major?14:9)}" stroke="#1f2937" stroke-width="${major?2.6:1.6}"/>`;
         if (major && L) s += `<text x="${x}" y="${y+46}" font-size="24" font-weight="600" fill="#1f2937" text-anchor="middle">${String(it.min + i/p).replace('-','−')}</text>`;
-        else if (small) s += `<text x="${x}" y="${y+40}" font-size="14" fill="#4b5563" text-anchor="middle">${mixedText(it.min*p + i, p).replace('-','−')}</text>`;
+        else if (small) s += `<text x="${x}" y="${y+40}" font-size="14" fill="#4b5563" text-anchor="middle">${(linked && (it.min*p + i) % p ? `${(it.min*p + i) % p ? (Math.floor((it.min*p + i)/p) ? Math.floor((it.min*p + i)/p) + ' ' : '') + ((it.min*p + i) % p) + '/' + p : ''}` : mixedText(it.min*p + i, p)).replace('-','−')}</text>`;
       }
+    }
+    // marks from the Fraction area wholes lined up with this line (labelled above the line when Names is on)
+    for (const m of nlFaMarks(it)){
+      const x = x0 + (x1 - x0)*m.f, onMark = !it.open && Math.abs(m.v*p - Math.round(m.v*p)) < 1e-9;
+      if (!onMark) s += `<path d="M${x} ${y - 11}V${y + 11}" stroke="#475569" stroke-width="2.2"/>`;
+      if (L && !Number.isInteger(m.v)) s += `<text x="${x}" y="${y - 17}" font-size="14" font-weight="700" fill="#475569" text-anchor="middle">${mixedText(m.k, m.d)}</text>`;
     }
     return s + hopsSVG(it) + ptsSVG(it);
   }
@@ -1028,12 +1034,85 @@ function toLocal(it, p){
   const { w, h } = size(it), cx = it.x + w/2, cy = it.y + h/2, a = -(it.r || 0)*Math.PI/180, dx = p.x - cx, dy = p.y - cy;
   return { x:dx*Math.cos(a) - dy*Math.sin(a) + w/2, y:dx*Math.sin(a) + dy*Math.cos(a) + h/2 };
 }
-// where along the line a point is; on an Intervals line it snaps to the nearest mark
+/* Number lines and Fraction area wholes work together. A line whose 1 is as long as a whole (FA_W) and whose whole
+   numbers sit exactly under (or over) a whole's ends gets a mark at every part edge of those wholes (thirds, fifths…). */
+const nlUnit = it => (it.w - 2*NL_X0)/(it.max - it.min);              // board length of 1 on the line
+const nlZeroX = it => it.x + NL_X0 - it.min*nlUnit(it);               // where 0 is (it can be off the line's ends)
+function nlFaWholes(it){
+  if (it.r || Math.abs(nlUnit(it) - FA_W) > 1.5) return [];
+  const z = nlZeroX(it), ly = it.y + NL_Y;
+  return Object.values(S.items).filter(f => {
+    if (f.k !== 'fa' || f.br || f.r) return false;
+    const k = (f.x + FA_PAD - z)/FA_W, kr = Math.round(k);   // the whole starts at a whole number on the line
+    return Math.abs(k - kr)*FA_W < 2 && kr >= it.min && kr + 1 <= it.max && Math.abs(f.y + size(f).h/2 - ly) < 900;
+  });
+}
+// the least common denominator of the wholes lined up with a line (0 when none); kept to 60 parts a whole at most
+function nlFaLcd(it){
+  const dens = nlFaDens(it); if (!dens.length) return 0;
+  const L = dens.reduce((a, b) => a*b/gcd(a, b), 1);
+  return L <= 60 ? L : 0;
+}
+// "fifteenths", "twenty-fourths" …
+function denomName(n){
+  const small = { 2:'halves', 3:'thirds', 4:'fourths', 5:'fifths', 6:'sixths', 7:'sevenths', 8:'eighths', 9:'ninths', 10:'tenths', 11:'elevenths', 12:'twelfths',
+                  13:'thirteenths', 14:'fourteenths', 15:'fifteenths', 16:'sixteenths', 17:'seventeenths', 18:'eighteenths', 19:'nineteenths' };
+  if (small[n]) return small[n];
+  const tens = { 2:'twent', 3:'thirt', 4:'fort', 5:'fift', 6:'sixt' }[Math.floor(n/10)], one = n % 10;
+  if (!one) return tens + 'ieths';
+  return tens + 'y-' + { 1:'firsts', 2:'seconds', 3:'thirds', 4:'fourths', 5:'fifths', 6:'sixths', 7:'sevenths', 8:'eighths', 9:'ninths' }[one];
+}
+const nlFaDens = it => it.k === 'nl' ? [...new Set(nlFaWholes(it).map(f => f.n).filter(n => n > 1))].sort((a, b) => a - b) : [];
+// the extra marks: every k/d between the line's ends, as fractions of the line's length
+function nlFaMarks(it){
+  const out = [], seen = new Set(), span = it.max - it.min;
+  for (const d of nlFaDens(it)) for (let k = Math.ceil(it.min*d); k <= Math.floor(it.max*d); k++){
+    const v = k/d, key = Math.round(v*1e6); if (seen.has(key)) continue; seen.add(key);
+    out.push({ v, k, d, f:(v - it.min)/span });
+  }
+  return out;
+}
+// where along the line a point is; on an Intervals line it snaps to the nearest mark (including Fraction area marks)
 function hopFrac(it, p){
   let f = Math.min(1, Math.max(0, (toLocal(it, p).x - NL_X0) / (it.w - 2*NL_X0)));
   const T = (it.max - it.min)*it.p;
-  if (!it.open && T > 0 && T <= 240) f = Math.round(f*T)/T;
+  let best = (!it.open && T > 0 && T <= 240) ? Math.round(f*T)/T : null, bd = best === null ? Infinity : Math.abs(best - f);
+  for (const m of nlFaMarks(it)){ const dd = Math.abs(m.f - f); if (dd < bd){ bd = dd; best = m.f; } }
+  if (best !== null && (!it.open || bd*(it.w - 2*NL_X0) < 14)) f = best;   // on an open line, only when close to a mark
   return Math.round(f*10000)/10000;
+}
+// a number line dropped near a whole lines up with it: 0 under the whole's left end, 1 under its right end
+function nlAlignTo(line, f){
+  if (line.r || line.min > 0 || line.max < 1) return false;            // the line has to include 0 to 1
+  if (line.max - line.min > 2){ line.max = line.min + 1; }              // a long line becomes one whole long (0 to 1); a line up to 2 keeps its length
+  line.w = Math.round((line.max - line.min)*FA_W + 2*NL_X0);
+  line.x = f.x + FA_PAD - NL_X0 + line.min*FA_W;
+  return true;
+}
+// how far apart a line and a whole are (up and down), or Infinity when they don't overlap side to side
+function nlFaGap(line, f){
+  const { h } = size(f), ly = line.y + NL_Y, l1 = line.x, l2 = line.x + line.w, f1 = f.x, f2 = f.x + size(f).w;
+  if (l2 < f1 || f2 < l1) return Infinity;
+  return ly < f.y ? f.y - ly : ly > f.y + h ? ly - (f.y + h) : 0;
+}
+// after a drop: a lone number line near a whole snaps to it; a lone whole near a line snaps to the line (the line is resized if needed)
+function nlFaSnap(changed){
+  const lines = changed.filter(i => i.k === 'nl' && !i.r), wholes = changed.filter(i => i.k === 'fa' && !i.r && !i.br);
+  if (lines.length === 1 && !wholes.length){
+    const line = lines[0], near = Object.values(S.items).filter(f => f.k === 'fa' && !f.r && !f.br).map(f => [f, nlFaGap(line, f)]).filter(([, g]) => g < 120).sort((a, b) => a[1] - b[1])[0];
+    if (near && nlAlignTo(line, near[0])) return 'line';
+  } else if (wholes.length === 1 && !lines.length){
+    const f = wholes[0], near = Object.values(S.items).filter(l => l.k === 'nl' && !l.r).map(l => [l, nlFaGap(l, f)]).filter(([, g]) => g < 120).sort((a, b) => a[1] - b[1])[0];
+    if (!near) return null;
+    const line = near[0];
+    if (Math.abs(nlUnit(line) - FA_W) <= 1.5){
+      // the line is already at a whole's scale: the whole moves onto its nearest whole number
+      const z = nlZeroX(line), k = Math.max(line.min, Math.min(line.max - 1, Math.round((f.x + FA_PAD - z)/FA_W)));
+      f.x = z + k*FA_W - FA_PAD; return 'whole';
+    }
+    if (nlAlignTo(line, f)){ changed.push(line); return 'line'; }
+  }
+  return null;
 }
 // "+3", "−1/4", "+1 1/2" on an Intervals line; just "+" or "−" on an open line
 function hopLabel(it, a, b){
@@ -1330,7 +1409,7 @@ function clean(o){
                 if (Array.isArray(o.pt) && o.pt.length)   // points on the line: where (0–1 along it) and a label
                   it.pt = o.pt.slice(0,60).map(q => ({ a:num(q && q.a,0,0,1), t:String((q && q.t) || '').slice(0,12) }));
                 it.min =Math.round(num(o.min,0,-1000,1000)); it.max = Math.round(num(o.max,10,it.min+1,it.min+240));
-                it.p = PARTS.includes(+o.p) ? +o.p : 1; it.w = num(o.w,1200,400,1560); break;
+                it.p = Math.round(num(o.p,1,1,60)); it.w = num(o.w,1200,400,1560); break;   // parts per whole: the menu offers 1–12, Equal parts can set more (e.g. 15)
     case 'txt': it.text = String(o.text || '').slice(0,80); it.fs = [24,32,48,64].includes(+o.fs) ? +o.fs : 32; it.c = col(o.c); break;
     case 'kk': it.n = Math.round(num(o.n,0,0,19)); it.r = 0; break;   // always upright
     case 'ab': it.t = Object.prototype.hasOwnProperty.call(AB, o.t) ? o.t : '1'; it.o = Math.round(num(o.o,0,0,2)); it.r = 0;
@@ -2203,7 +2282,7 @@ function render(){
     let e = els.get(it.id);
     if (!e){ e = document.createElementNS('http://www.w3.org/2000/svg','g'); e.dataset.id = it.id; els.set(it.id, e); }
     const { x, y, z, r, lock, ...shape } = it;
-    const key = JSON.stringify(shape) + S.labels + (it.k === 'pm' ? pmColor(it) : '');   // pentominoes redraw when the color choice changes
+    const key = JSON.stringify(shape) + S.labels + (it.k === 'pm' ? pmColor(it) : '') + (it.k === 'nl' ? nlFaDens(it).join() : '');   // pentominoes follow the color choice; number lines follow the wholes lined up with them
     if (e._k !== key){ e.innerHTML = inner(it); e._k = key; }
     const { w, h } = size(it);
     e.setAttribute('transform', `translate(${x} ${y})` + (r ? ` rotate(${r} ${w/2} ${h/2})` : ''));
@@ -2570,6 +2649,7 @@ function valueText(list){
 
 /* ---------- selection actions ---------- */
 const IC = {
+  nllcd:'<path d="M2.5 12h15"/><path d="M4 9.5v5M16 9.5v5"/><path d="M7 11v2M10 11v2M13 11v2"/><path d="M6 6.5h8" stroke-dasharray="1.5 1.5"/>',
   facmp:'<path d="M10 2.5v15" stroke="#dc2626"/><rect x="2.5" y="5" width="15" height="4" rx="1"/><rect x="2.5" y="11" width="15" height="4" rx="1"/>',
   rotL:'<path d="M4.5 10a5.5 5.5 0 105.5-5.5H7"/><path d="M8.5 2.5L6.5 4.5l2 2"/>',
   rotR:'<path d="M15.5 10A5.5 5.5 0 1110 4.5h3"/><path d="M11.5 2.5l2 2-2 2"/>',
@@ -2626,7 +2706,7 @@ function updateBar(){
   // a geo strip hole or joint that was clicked: pin it, or separate the strips joined there
   const gh = S.gsHole && S.items[S.gsHole[0]] && S.sel.has(S.gsHole[0]) ? S.gsHole : null;
   const ghG = gh ? gsGroup(gh, gsNodes()) : null, ghPin = ghG ? ghG.some(gsPinned) : false, ghJoin = ghG ? new Set(ghG.map(h => h[0])).size > 1 : false;
-  const sig = list.map(i => i.id + i.k + (i.neg?1:0) + (i.lock?1:0) + (i.grp || '') + (i.k === 'fa' ? i.n + i.sh + (i.br ? 'b' : '') + (i.cl !== undefined ? 'c' : '') : '')).join() + '|' + v + '|' + (gh ? gh.join(':') + ghPin + ghJoin : '') + '|' + S.faCol;
+  const sig = list.map(i => i.id + i.k + (i.neg?1:0) + (i.lock?1:0) + (i.grp || '') + (i.k === 'fa' ? i.n + i.sh + (i.br ? 'b' : '') + (i.cl !== undefined ? 'c' : '') : '') + (i.k === 'nl' ? 'p' + i.p + (i.open ? 'o' : '') + nlFaLcd(i) : '')).join() + '|' + v + '|' + (gh ? gh.join(':') + ghPin + ghJoin : '') + '|' + S.faCol;
   if (sig === bar._sig) return;
   bar._sig = sig;
   const b = list.some(i => !NO_TURN.has(i.k)) ? [abtn('rotL','rotL','Rotate left'), abtn('rotR','rotR','Rotate right')] : [];
@@ -2652,6 +2732,9 @@ function updateBar(){
   if (list.some(i => i.k === 'tg' && !i.lock)) b.push(abtn('tgcol','tgcol','Color'));
   if (list.some(i => i.k === 'ab' && !i.lock)) b.push(abtn('abturn','abturn','Turn'));
   if (list.some(i => i.k === 'amx' && !i.lock)) b.push(abtn('matturn','rotR','Turn mat'));
+  // a number line lined up with Fraction area wholes: split it into equal parts of the common denominator (thirds + fifths → fifteenths)
+  const nlLcd = list.length === 1 && list[0].k === 'nl' && !list[0].lock ? nlFaLcd(list[0]) : 0;
+  if (nlLcd > 1) b.push(list[0].p === nlLcd && !list[0].open ? abtn('nllcd','nllcd','Back to wholes') : abtn('nllcd','nllcd','Equal parts: ' + denomName(nlLcd)));
   if (list.some(i => DOWN[i.k])) b.push(abtn('break','brk','Break into 10'));
   if (GROUPABLE.some(k => list.filter(i => i.k === k && !i.lock).length >= 10)) b.push(abtn('group','grp','Group 10'));
   if (hasZeroPair(list)) b.push(abtn('zero','zero','Remove zero pairs'));
@@ -2785,6 +2868,10 @@ function doAction(a){
     const fl = faList().filter(i => i.n > 1); if (!fl.length) return;
     const br = !fl.every(i => i.br);
     act(() => put(fl.map(i => { const n = { ...i }; if (br) n.br = true; else delete n.br; return n; })));
+  } else if (a === 'nllcd'){
+    const it = free.find(i => i.k === 'nl'), L = it && nlFaLcd(it); if (!L) return;
+    act(() => { const n = { ...it }; if (n.p === L && !n.open) n.p = 1; else { n.p = L; delete n.open; } put([n]); });
+    if (it.p !== L) toast(`Split into ${denomName(L)}: equal parts every 1/${L}. Turn on Names to see them labelled.`);
   } else if (a === 'fasplit') faSplitDialog();
   else if (a === 'faline') faLineUp();
   else if (a === 'facmp') faCompare();
@@ -3702,6 +3789,8 @@ function endPointer(e){
         else { changed.forEach(i => { const o = d.orig.get(i.id); if (o){ i.x = o.x; i.y = o.y; } }); toast(changed.some(i => i.k === 'pm') ? 'Pentominoes can’t overlap, so the piece went back.' : 'Tangram pieces can’t overlap, so the piece went back.'); }
       }
     }
+    const snapped = nlFaSnap(changed);   // number lines and Fraction area wholes line up when dropped near each other
+    if (snapped) toast('Lined up with the Fraction area: the number line has a mark at every part of the whole.');
     pend.clear(); clearTimeout(pendT); pendT = 0;
     // pieces carried along with a Volume mat keep their jobs; pieces dragged on their own are re-sorted by where they landed
     const carried = d.ids.some(id => S.items[id] && S.items[id].k === 'avol');
