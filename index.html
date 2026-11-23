@@ -259,7 +259,7 @@ body.embed .brand,body.embed #helpBtn{display:none}
         <pattern id="cgrid" width="50" height="50" patternUnits="userSpaceOnUse"><path d="M50 0H0V50" fill="none" stroke="#dde3eb" stroke-width="1.5"/></pattern>
         <!-- isometric dots 30 apart: pattern blocks (side 60) sit exactly on them -->
         <pattern id="iso" width="30" height="51.9615" patternUnits="userSpaceOnUse"><g fill="#bcc4d0"><circle cx="0" cy="0" r="2.2"/><circle cx="30" cy="0" r="2.2"/><circle cx="15" cy="25.98" r="2.2"/><circle cx="0" cy="51.9615" r="2.2"/><circle cx="30" cy="51.9615" r="2.2"/></g></pattern>
-        <!-- Taptinita seeds: same colours as code/taptinita/web/style.css -->
+        <!-- Taptanita seeds: same colours as code/taptanita/web/style.css -->
         <radialGradient id="gCorn" cx=".4" cy=".7" r=".8"><stop offset=".14" stop-color="#fff8c4"/><stop offset=".45" stop-color="#ffd21f"/><stop offset="1" stop-color="#b77c00"/></radialGradient>
         <radialGradient id="gPea" cx=".35" cy=".3" r=".85"><stop offset=".12" stop-color="#e6ffb8"/><stop offset=".42" stop-color="#6fe83a"/><stop offset="1" stop-color="#1d6b10"/></radialGradient>
         <radialGradient id="gBean" cx=".35" cy=".3" r=".85"><stop offset=".10" stop-color="#ffb3a8"/><stop offset=".40" stop-color="#c22f3a"/><stop offset="1" stop-color="#4a0d12"/></radialGradient>
@@ -333,8 +333,8 @@ function inkOn(c){
 const BT = { b1:{w:20,h:20,v:1,one:'one',many:'ones'}, b10:{w:20,h:200,v:10,one:'ten',many:'tens'},
              b100:{w:200,h:200,v:100,one:'hundred',many:'hundreds'}, b1000:{w:240,h:240,v:1000,one:'thousand',many:'thousands'} };
 const BTC = { b1:'#F7C744', b10:'#62BF84', b100:'#4F95DB', b1000:'#A083D6' };
-const UP = { b1:'b10', b10:'b100', b100:'b1000', corn:'pea', pea:'bean', bean:'lupin' },
-      DOWN = { b10:'b1', b100:'b10', b1000:'b100', pea:'corn', bean:'pea', lupin:'bean' };
+const UP = { b1:'b10', b10:'b100', b100:'b1000', corn:'bean', bean:'pea', pea:'lupin' },
+      DOWN = { b10:'b1', b100:'b10', b1000:'b100', bean:'corn', pea:'bean', lupin:'pea' };
 const GROUPABLE = Object.keys(UP);
 const FW = 600, FH = 50, FDEN = [1,2,3,4,5,6,8,10,12];
 const FC = {1:'#EFE7D4',2:'#E4572E',3:'#F3A712',4:'#8DBF6B',5:'#4F95DB',6:'#9B6BD9',8:'#E7609E',10:'#2DB3C9',12:'#7FD1AE'};
@@ -457,15 +457,16 @@ function dotShift(list){
 }
 function bgSnap(list){ list = gsSnapList(isoSnap(list)); const s = gridShift(list) || dotShift(list); return s ? list.map(i => ({ ...i, x:i.x + s.dx, y:i.y + s.dy })) : list; }
 const PARTS = [1,2,3,4,5,6,8,10,12];
-/* Taptinita (from code/taptinita): base-10 figure (220 × 310 viewBox) drawn at 2×, and its four seeds.
-   corn = ones, peas = tens, beans = hundreds, lupins = thousands, as in the app's default order. */
+/* Taptanita (from code/taptanita): base-10 figure (220 × 310 viewBox) drawn at 2×, and its four seeds.
+   corn = ones, beans = tens, peas = hundreds, lupins = thousands, as in the app's default order
+   (red frejol = tens and green haba = hundreds in the SEIBE guide). */
 const TAP = 2;
 const TAP_POZOS = [...Array(9)].map((_, i) => { const a = (50 + i*32.5) * Math.PI / 180; return [110 + 70*Math.sin(a), 208 - 70*Math.cos(a)]; });
 const TAP_KILLA = [110, 134];
 const SEED = {
   corn:  { w:44, h:50, v:1,    one:'corn',  many:'corn',   g:'gCorn',  e:'#8a5c00', rad:[[.46,.34],[.46,.34],[.5,.66],[.5,.66]] },
-  pea:   { w:42, h:42, v:10,   one:'pea',   many:'peas',   g:'gPea',   e:'#1d6b10', rad:[[.5,.5],[.5,.5],[.5,.5],[.5,.5]] },
-  bean:  { w:58, h:38, v:100,  one:'bean',  many:'beans',  g:'gBean',  e:'#4a0d12', rad:[[.5,.62],[.5,.62],[.46,.38],[.46,.38]] },
+  bean:  { w:58, h:38, v:10,   one:'bean',  many:'beans',  g:'gBean',  e:'#4a0d12', rad:[[.5,.62],[.5,.62],[.46,.38],[.46,.38]] },
+  pea:   { w:42, h:42, v:100,  one:'pea',   many:'peas',   g:'gPea',   e:'#1d6b10', rad:[[.5,.5],[.5,.5],[.5,.5],[.5,.5]] },
   lupin: { w:46, h:40, v:1000, one:'lupin', many:'lupins', g:'gLupin', e:'#8a7040', rad:[[.5,.54],[.5,.54],[.5,.46],[.5,.46]] }
 };
 /* Exploding dots (after James Tanton's model; own drawing): boxes numbered from the right (0 = ones).
@@ -1406,7 +1407,7 @@ const GROUPS = [
   { id:'base10', name:'Base ten blocks', tiles:[['b1','One'],['b10','Ten'],['b100','Hundred'],['b1000','Thousand']] },
   { id:'fdp', name:'FDP grids', tiles:[['pg100','Hundred grid'],['pg10','Ten strip']] },
   { id:'area', name:'Area model', tiles:[['am','Area model']] },
-  { id:'taptinita', name:'Taptinita', tiles:[['tap','Taptinita'],['corn','Corn'],['pea','Pea'],['bean','Bean'],['lupin','Lupin']] },
+  { id:'taptanita', name:'Taptanita', tiles:[['tap','Taptanita'],['corn','Corn'],['bean','Bean'],['pea','Pea'],['lupin','Lupin']] },
   { id:'fractions', name:'Fraction bars', wall:FW, tiles:FDEN.map(n => ['f'+n, n===1 ? 'One whole' : 'One ' + ({2:'half',3:'third',4:'fourth',5:'fifth',6:'sixth',8:'eighth',10:'tenth',12:'twelfth'})[n]]) },
   { id:'fractionarea', name:'Fraction area', wall:FA_W + 2*FA_PAD, tiles:[['fa','One whole']] },
   { id:'rods', name:'Number rods', wall:10*RU, tiles:[1,2,3,4,5,6,7,8,9,10].map(n => ['rod'+n, 'Rod ' + n]) },
@@ -1426,7 +1427,7 @@ const GROUPS = [
 ];
 
 function buildTray(){
-  const alias = { shapes:'patternblocks', percent:'fdp' };   // old link names still work
+  const alias = { shapes:'patternblocks', percent:'fdp', taptinita:'taptanita' };   // old link names still work
   const want = (params.get('tray') || '').split(',').map(s => alias[s.trim()] || s.trim()).filter(Boolean);
   let html = '';
   for (const g of GROUPS){
@@ -1584,7 +1585,7 @@ function make(t, cx, cy){
   const { w, h } = size(it);
   it.x = Math.round(cx - w/2); it.y = Math.round(cy - h/2);
   it.z = MAT.has(it.k) ? zBottom() : zTop();
-  if (SEED[it.k]) it.r = Math.round(Math.random()*50 - 25);   // seeds lie at a slight tilt, like in Taptinita
+  if (SEED[it.k]) it.r = Math.round(Math.random()*50 - 25);   // seeds lie at a slight tilt, like in Taptanita
   return it;
 }
 // all 7 tangram pieces put together as the square, centred on (cx, cy)
@@ -2527,7 +2528,7 @@ function valueText(list){
   }
   const sd = list.filter(i => SEED[i.k]);
   if (sd.length){
-    const c = { lupin:0, bean:0, pea:0, corn:0 };
+    const c = { lupin:0, pea:0, bean:0, corn:0 };
     sd.forEach(i => c[i.k]++);
     const tot = sd.reduce((s,i) => s + SEED[i.k].v, 0);
     const desc = Object.entries(c).filter(([,n]) => n).map(([k,n]) => `${n} ${n === 1 ? SEED[k].one : SEED[k].many}`).join(', ');
@@ -2675,7 +2676,7 @@ function doAction(a){
   if (!list.length) return;
   const free = list.filter(i => !i.lock);
   if (a === 'rotL' || a === 'rotR'){
-    // the Taptinita stays upright so its seeds stay in their pozos; Kaktovik numerals stay upright so they read correctly
+    // the Taptanita stays upright so its seeds stay in their pozos; Kaktovik numerals stay upright so they read correctly
     const turn = free.filter(i => !NO_TURN.has(i.k));
     // pattern blocks turn 30° at a time, or 60° on the isometric dots (so their corners land on dots again)
     const dir = a === 'rotL' ? -1 : 1, onlyShapes = turn.every(i => i.k === 'sh'), iso = isoOn() && turn.some(i => i.k === 'sh');
@@ -2810,8 +2811,8 @@ function doAction(a){
   }
 }
 
-/* ---------- Taptinita: seeds belong to the Taptinita they sit on ---------- */
-const SLOT_R = 19*TAP, SLOT_MAX = 9, SEED_ORDER = { lupin:0, bean:1, pea:2, corn:3 };
+/* ---------- Taptanita: seeds belong to the Taptanita they sit on ---------- */
+const SLOT_R = 19*TAP, SLOT_MAX = 9, SEED_ORDER = { lupin:0, pea:1, bean:2, corn:3 };
 const tapSlots = t => [...TAP_POZOS, TAP_KILLA].map(([px,py]) => [t.x + px*TAP, t.y + py*TAP]);
 const centerOf = it => { const { w, h } = size(it); return [it.x + w/2, it.y + h/2]; };
 function onTap(t, s){
@@ -2819,7 +2820,7 @@ function onTap(t, s){
   return Math.hypot(lx - 110, ly - 66) < 64 || Math.hypot(lx - 110, ly - 208) < 102;
 }
 function tapUnder(s){ return Object.values(S.items).find(t => t.k === 'tap' && onTap(t, s)) || null; }
-// a list plus every seed sitting on a Taptinita in it
+// a list plus every seed sitting on a Taptanita in it
 function withSeeds(list){
   const out = [...list], have = new Set(list.map(i => i.id));
   for (const t of list) if (t.k === 'tap')
@@ -2867,7 +2868,7 @@ function breakApart(list){
       const b = bbox(it), out = [], tap = SEED[it.k] ? tapUnder(it) : null;
       for (let i=0;i<10;i++){
         let x, y;
-        // on a Taptinita, the 10 smaller seeds fill the 9 pozos and the Killa, as in the app
+        // on a Taptanita, the 10 smaller seeds fill the 9 pozos and the Killa, as in the app
         if (tap){ const [cx, cy] = tapSlots(tap)[i]; x = cx - SEED[low].w/2; y = cy - SEED[low].h/2; }
         else if (SEED[it.k]){ const cw = SEED[low].w + 8; x = b.l + (i % 5)*cw; y = b.t + Math.floor(i/5)*(SEED[low].h + 8); }
         else if (it.k === 'b10'){
@@ -3127,7 +3128,7 @@ function magnet(dx, dy){
 }
 
 function startMove(p, ids, pre, fromTray){
-  // a Taptinita carries the seeds sitting on it
+  // a Taptanita carries the seeds sitting on it
   ids = withSeeds(ids.map(id => S.items[id])).filter(i => !i.lock).map(i => i.id);
   // a mat carries the pieces sitting on it
   for (const id of [...ids]){
@@ -4061,7 +4062,7 @@ $('#helpBtn').onclick = () => openDlg(`<h2>How to use Edutorium Live</h2><div cl
     <li><b>Remove:</b> drag pieces back to the left, or press Delete.</li>
     <li><b>Flip:</b> double-click a counter or algebra tile to turn it over.</li>
     <li><b>Base ten:</b> select a ten, hundred or thousand and choose <b>Break into 10</b>. Select 10 of the same block and choose <b>Group 10</b>.</li>
-    <li><b>Taptinita:</b> drop corn, peas, beans and lupins into the pozos or the red Killa and they settle in. Several seeds can share a pozo; they shrink to fit. Moving the Taptinita moves its seeds too. Select 10 of one seed and choose <b>Group 10</b> to trade up, or select a seed and choose <b>Break into 10</b>.</li>
+    <li><b>Taptanita:</b> drop corn (ones), beans (tens), peas (hundreds) and lupins (thousands) into the pozos or the red Killa and they settle in. Several seeds can share a pozo; they shrink to fit. Moving the Taptanita moves its seeds too. Select 10 of one seed and choose <b>Group 10</b> to trade up, or select a seed and choose <b>Break into 10</b>.</li>
     <li><b>Pen:</b> choose <b>Freehand</b> or <b>Line</b> next to the colours. Line draws a straight line from where you press to where you let go (Shift snaps it to 15° steps). In Freehand, hold Shift for a straight line.</li>
     <li><b>Hops:</b> drag a <b style="color:#2563eb">+ hop</b> or <b style="color:#dc2626">− hop</b> from <b>Number lines</b> onto a number line, type its value and press Enter (the + or − is added for you). Drag the arc to slide the hop along the line, the dot to move its start, or the arrowhead to move its end. Click a hop's label to change its value or delete it (×). On Intervals, hops snap to the marks. The eraser rubs hops out too.</li>
     <li><b>Points:</b> drag the <b style="color:#7c3aed">point</b> from <b>Number lines</b> onto a line (again for more points). On Intervals it snaps to a mark. Points start with no label: click one to add a label (such as A or its value) or delete it. Drag a point to slide it.</li>
