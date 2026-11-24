@@ -4194,8 +4194,20 @@ async function savePicture(){
     const img = new Image();
     img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(c));
     await img.decode();
-    const cv = document.createElement('canvas'); cv.width = Math.round(area.w*k); cv.height = Math.round(area.h*k);
-    const g = cv.getContext('2d'); g.fillStyle = '#ffffff'; g.fillRect(0, 0, cv.width, cv.height); g.drawImage(img, 0, 0, cv.width, cv.height);
+    // a strip under the board carries the Edutorium logo and name, so it never covers a piece
+    const bw = Math.round(area.w*k), bh = Math.round(area.h*k), fh = Math.round(Math.max(48, Math.min(110, bw * 0.05)));
+    const cv = document.createElement('canvas'); cv.width = bw; cv.height = bh + fh;
+    const g = cv.getContext('2d'); g.fillStyle = '#ffffff'; g.fillRect(0, 0, cv.width, cv.height); g.drawImage(img, 0, 0, bw, bh);
+    g.fillStyle = '#e5e7eb'; g.fillRect(0, bh, bw, Math.max(1, Math.round(fh/48)));
+    const logo = document.querySelector('.brand .logo');
+    const lh = Math.round(fh * 0.64), lw = logo && logo.naturalHeight ? Math.round(lh * logo.naturalWidth / logo.naturalHeight) : 0;
+    const fs = Math.round(fh * 0.34), pad = Math.round(fh * 0.3), ty = bh + fh/2;
+    g.font = `700 ${fs}px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif`; g.textBaseline = 'middle';
+    const w1 = g.measureText('Edutorium ').width, w2 = g.measureText('Live').width;
+    let x = bw - pad - w1 - w2 - (lw ? lw + Math.round(fh*0.18) : 0);   // bottom-right corner
+    if (lw){ try { g.drawImage(logo, x, bh + (fh - lh)/2, lw, lh); } catch(e){} x += lw + Math.round(fh*0.18); }
+    g.fillStyle = '#111827'; g.fillText('Edutorium ', x, ty);
+    g.fillStyle = '#2563eb'; g.fillText('Live', x + w1, ty);
     cv.toBlob(b => { if (b) saveBlob(b, `edutorium-board-${today()}.png`, 'Picture', 'image/png', '.png'); else toast('Could not make the picture.'); }, 'image/png');
   } catch(e){ console.warn(e); toast('Could not make the picture.'); }
 }
