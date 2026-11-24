@@ -1,8 +1,17 @@
 <!doctype html>
+<!--
+  Edutorium Live
+  Copyright (c) 2026 Edutorium of Excellence LLC. All rights reserved.
+  This software and its content may not be copied, modified, distributed or sold without written permission
+  from Edutorium of Excellence LLC. See LICENSE.txt.
+  Third-party libraries keep their own licenses: Work together uses PeerJS (MIT License).
+-->
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="copyright" content="© 2026 Edutorium of Excellence LLC. All rights reserved.">
+<meta name="author" content="Edutorium of Excellence LLC">
 <title>Edutorium Live</title>
 <style>
 :root{
@@ -103,6 +112,7 @@ main{display:grid;grid-template-columns:224px minmax(0,1fr);min-height:0}
 .tile.nlt{min-height:0;padding:8px 4px 6px;background:#fcfbf7;border-color:#e3e6eb;color:#4b5563}
 .tile.nlt:hover{border-color:var(--accent)}
 .tray-hint{font-size:12px;color:var(--muted);margin:8px 2px 0}
+.tray-hint.copyright{font-size:11px;opacity:.85;margin-top:12px}
 
 /* the board has no edges: the whole stage is paper, and you pan and zoom around it */
 #stage{position:relative;z-index:1;background:#fcfbf7;min-width:0;min-height:0;overflow:hidden}
@@ -957,14 +967,25 @@ function inner(it, L = S.labels){
         const x = x0 + (x1-x0)*i/total, major = i % p === 0;
         s += `<path d="M${x} ${y-(major?14:9)}V${y+(major?14:9)}" stroke="#1f2937" stroke-width="${major?2.6:1.6}"/>`;
         if (major && L) s += `<text x="${x}" y="${y+46}" font-size="24" font-weight="600" fill="#1f2937" text-anchor="middle">${String(it.min + i/p).replace('-','−')}</text>`;
-        else if (small) s += `<text x="${x}" y="${y+40}" font-size="14" fill="#4b5563" text-anchor="middle">${(linked && (it.min*p + i) % p ? `${(it.min*p + i) % p ? (Math.floor((it.min*p + i)/p) ? Math.floor((it.min*p + i)/p) + ' ' : '') + ((it.min*p + i) % p) + '/' + p : ''}` : mixedText(it.min*p + i, p)).replace('-','−')}</text>`;
+        else if (small && linked && (it.min*p + i) % p && it.min >= 0){
+          // lined up with Fraction area wholes: the equal parts as stacked fractions, not simplified (5/15), below the line
+          const v = it.min*p + i, wh = Math.floor(v/p), fs = 15;
+          s += wh ? `<text x="${x - fs*0.9}" y="${y + 40}" font-size="${fs + 1}" font-weight="700" fill="#334155" text-anchor="end">${wh}</text>` : '';
+          s += fracLabel(v % p, p, x, y + 34, '#334155', fs);
+        }
+        else if (small) s += `<text x="${x}" y="${y+40}" font-size="14" fill="#4b5563" text-anchor="middle">${mixedText(it.min*p + i, p).replace('-','−')}</text>`;
       }
     }
     // marks from the Fraction area wholes lined up with this line (labelled above the line when Names is on)
     for (const m of nlFaMarks(it)){
       const x = x0 + (x1 - x0)*m.f, onMark = !it.open && Math.abs(m.v*p - Math.round(m.v*p)) < 1e-9;
-      if (!onMark) s += `<path d="M${x} ${y - 11}V${y + 11}" stroke="#475569" stroke-width="2.2"/>`;
-      if (L && !Number.isInteger(m.v)) s += `<text x="${x}" y="${y - 17}" font-size="14" font-weight="700" fill="#475569" text-anchor="middle">${mixedText(m.k, m.d)}</text>`;
+      // the wholes' marks: a taller teal tick (drawn over an equal-part tick), labelled above the line as a stacked fraction
+      if (!Number.isInteger(m.v)) s += `<path d="M${x} ${y - 15}V${y + 9}" stroke="#0f766e" stroke-width="3"/>`;
+      else if (!onMark) s += `<path d="M${x} ${y - 11}V${y + 11}" stroke="#475569" stroke-width="2.2"/>`;
+      if (L && !Number.isInteger(m.v)){
+        const g = gcd(m.k, m.d), n = m.k/g, d = m.d/g, wh = Math.floor(n/d);
+        s += (wh ? `<text x="${x - 14}" y="${y - 25}" font-size="16" font-weight="800" fill="#0f766e" text-anchor="end">${wh}</text>` : '') + fracLabel(n - wh*d, d, x, y - 40, '#0f766e', 15);
+      }
     }
     return s + hopsSVG(it) + ptsSVG(it);
   }
@@ -1610,6 +1631,7 @@ function buildTray(){
     html += `</div></details>`;
   }
   html += `<p class="tray-hint">Drag pieces onto the board. Drag them back here to remove them.</p>`;
+  html += `<p class="tray-hint copyright">© 2026 Edutorium of Excellence LLC. All rights reserved.</p>`;
   tray.innerHTML = html;
 }
 
@@ -4188,6 +4210,7 @@ $('#feedbackBtn').onclick = () => {
     <li><b>In slides:</b> use <b>Board link</b> to save the board as a link, then add that link to your slide.</li>
   </ul>
   <p>Keys: R rotate, F flip, Ctrl+D copy, Ctrl+Z undo, arrows nudge, V move, P pen, E eraser, T text, hold Space to move around.</p></div>
+  <p style="margin:12px 0 0;font-size:12px">© 2026 Edutorium of Excellence LLC. All rights reserved. Work together uses PeerJS (MIT License).</p>
   <menu><button class="btn primary" value="cancel">Got it</button></menu>`, null);
 
 /* ---------- toast ---------- */
